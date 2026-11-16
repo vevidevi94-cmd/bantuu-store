@@ -33,7 +33,7 @@ const DATA_DIR = process.env.VERCEL
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 const DEFAULT_RTDB_URL = 'https://bantuu-store-default-rtdb.firebaseio.com';
 const DEFAULT_UPI_ID = 'skiend@axl';
-const DEFAULT_UPI_QR_URL = '/assets/aistudio/47084_35196505.jpg';
+const DEFAULT_UPI_QR_URL = '/assets/aistudio/47084_f56d5f0a.jpg';
 const DEFAULT_CATEGORIES = [
   'Home & Living',
   'Carry & Leather',
@@ -232,7 +232,7 @@ function ensureDbInitialized(): StoreDatabase {
   if (!parsed.settings.upiId || parsed.settings.upiId === 'bantustore@upi') {
     parsed.settings.upiId = DEFAULT_UPI_ID;
   }
-  if (!parsed.settings.upiQrUrl) {
+  if (!parsed.settings.upiQrUrl || parsed.settings.upiQrUrl.includes('47084_35196505')) {
     parsed.settings.upiQrUrl = DEFAULT_UPI_QR_URL;
   }
   if (!Array.isArray(parsed.categories) || parsed.categories.length === 0) {
@@ -387,10 +387,12 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
   }
 
   if (remote.settings) {
+    const needsQrMigration =
+      !remote.settings.upiQrUrl || remote.settings.upiQrUrl.includes('47084_35196505');
     const needsUpiMigration =
       !remote.settings.upiId ||
       remote.settings.upiId === 'bantustore@upi' ||
-      !remote.settings.upiQrUrl;
+      needsQrMigration;
     db.settings = {
       ...db.settings,
       ...remote.settings,
@@ -398,7 +400,7 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
         !remote.settings.upiId || remote.settings.upiId === 'bantustore@upi'
           ? DEFAULT_UPI_ID
           : remote.settings.upiId,
-      upiQrUrl: remote.settings.upiQrUrl || DEFAULT_UPI_QR_URL,
+      upiQrUrl: needsQrMigration ? DEFAULT_UPI_QR_URL : remote.settings.upiQrUrl,
       firebaseRtdbUrl: remote.settings.firebaseRtdbUrl || db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL,
     };
     changed = true;

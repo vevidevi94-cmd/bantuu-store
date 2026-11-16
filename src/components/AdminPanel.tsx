@@ -209,7 +209,7 @@ export function AdminPanel({
   const [setStoreName, setSetStoreName] = useState(settings.storeName);
   const [setUpiId, setSetUpiId] = useState(settings.upiId);
   const [setUpiQrUrl, setSetUpiQrUrl] = useState(
-    settings.upiQrUrl || '/assets/aistudio/47084_35196505.jpg',
+    settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg',
   );
   const [setMerchantName, setSetMerchantName] = useState(settings.merchantName);
   const [setFreeThreshold, setSetFreeThreshold] = useState(String(settings.freeShippingThreshold));
@@ -336,7 +336,7 @@ export function AdminPanel({
   useEffect(() => {
     setSetStoreName(settings.storeName);
     setSetUpiId(settings.upiId);
-    setSetUpiQrUrl(settings.upiQrUrl || '/assets/aistudio/47084_35196505.jpg');
+    setSetUpiQrUrl(settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg');
     setSetMerchantName(settings.merchantName);
     setSetFreeThreshold(String(settings.freeShippingThreshold));
     setSetShippingFee(String(settings.shippingFee));
@@ -1730,9 +1730,13 @@ export function AdminPanel({
               </div>
 
               <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden border border-[#DED8C8] bg-white shrink-0">
+                <div
+                  className={`w-20 h-20 rounded-lg overflow-hidden border border-[#DED8C8] shrink-0 ${
+                    (setUpiQrUrl || '').includes('47084_35196505') ? 'bg-white' : 'bg-black'
+                  }`}
+                >
                   <img
-                    src={setUpiQrUrl || '/assets/aistudio/47084_35196505.jpg'}
+                    src={setUpiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
                     alt="Merchant UPI QR Barcode"
                     className={
                       (setUpiQrUrl || '').includes('47084_35196505')
@@ -1750,7 +1754,7 @@ export function AdminPanel({
                     type="text"
                     value={setUpiQrUrl}
                     onChange={(e) => setSetUpiQrUrl(e.target.value)}
-                    placeholder="/assets/aistudio/47084_35196505.jpg"
+                    placeholder="/assets/aistudio/47084_f56d5f0a.jpg"
                     className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-[#DED8C8] bg-white focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>

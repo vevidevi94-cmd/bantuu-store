@@ -494,21 +494,25 @@ export function CheckoutModal({
                   <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] space-y-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                       {(() => {
-                        const qrUrl = settings.upiQrUrl || '/assets/aistudio/47084_35196505.jpg';
-                        const isPhonePeFullScreen = qrUrl.includes('47084_35196505');
+                        const qrUrl = settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg';
+                        const isLegacyFullScreen = qrUrl.includes('47084_35196505');
                         if (!qrUrl || qrLoadError) {
                           return <DeterministicUpiQr seed={upiUri} />;
                         }
                         return (
-                          <div className="w-40 h-40 sm:w-44 sm:h-44 rounded-xl overflow-hidden border border-[#DED8C8] bg-white shrink-0">
+                          <div
+                            className={`w-44 h-44 sm:w-48 sm:h-48 rounded-xl overflow-hidden border border-[#DED8C8] shrink-0 ${
+                              isLegacyFullScreen ? 'bg-white' : 'bg-black'
+                            }`}
+                          >
                             <img
                               src={qrUrl}
                               alt={`Scan to pay ${settings.upiId} via UPI`}
                               onError={() => setQrLoadError(true)}
                               className={
-                                isPhonePeFullScreen
+                                isLegacyFullScreen
                                   ? 'w-full h-full object-cover object-[50%_52%] scale-[1.28]'
-                                  : 'w-full h-full object-contain p-1.5'
+                                  : 'w-full h-full object-contain p-1'
                               }
                             />
                           </div>
@@ -544,7 +548,7 @@ export function CheckoutModal({
                             )}
                           </button>
                           <a
-                            href={settings.upiQrUrl || '/assets/aistudio/47084_35196505.jpg'}
+                            href={settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
                             download="bantuu-store-upi-qr.jpg"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA]"
                           >

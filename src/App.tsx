@@ -33,7 +33,7 @@ const ORDERS_STORAGE_KEY = 'bantuu_customer_orders_v1';
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: 'Bantuu Store',
   upiId: 'skiend@axl',
-  upiQrUrl: '/assets/aistudio/47084_35196505.jpg',
+  upiQrUrl: '/assets/aistudio/47084_f56d5f0a.jpg',
   merchantName: 'Bantuu Store Retail',
   freeShippingThreshold: 999,
   shippingFee: 79,
