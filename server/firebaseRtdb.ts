@@ -6,7 +6,7 @@ import {
   type OrderStatus,
   type Product,
   type StoreSettings,
-} from '../src/utils/storeLogic';
+} from '../src/utils/storeLogic.js';
 
 export interface RtdbSyncState {
   connected: boolean;

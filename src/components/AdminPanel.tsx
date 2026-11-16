@@ -46,6 +46,7 @@ interface AdminPanelProps {
   categories: string[];
   settings: StoreSettings;
   onExitAdmin: () => void;
+  onSessionExpired?: () => void;
   onProductsChanged: (products: Product[]) => void;
   onCategoriesChanged: (categories: string[], nextProducts?: Product[]) => void;
   onSettingsChanged: (settings: StoreSettings) => void;
@@ -59,11 +60,105 @@ const ORDER_STATUSES: OrderStatus[] = [
   'Cancelled',
 ];
 
+async function parseApiJson<T = Record<string, unknown>>(
+  res: Response,
+): Promise<{ data: T | null; rawText: string }> {
+  const rawText = await res.text();
+  if (!rawText) return { data: null, rawText: '' };
+  try {
+    return { data: JSON.parse(rawText) as T, rawText };
+  } catch {
+    return { data: null, rawText };
+  }
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('Could not read file data.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function prepareMediaPayload(file: File): Promise<{
+  fileName: string;
+  mimeType: string;
+  base64Data: string;
+}> {
+  const isImage = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/');
+
+  if (isImage && file.type !== 'image/gif' && typeof document !== 'undefined') {
+    try {
+      const objectUrl = URL.createObjectURL(file);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Invalid image file'));
+        image.src = objectUrl;
+      });
+      URL.revokeObjectURL(objectUrl);
+
+      const maxDim = 1280;
+      const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+      const width = Math.max(1, Math.round((img.width || maxDim) * scale));
+      const height = Math.max(1, Math.round((img.height || maxDim) * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBlob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.82),
+        );
+        if (compressedBlob && compressedBlob.size > 0) {
+          const base64Data = await blobToBase64(compressedBlob);
+          const cleanName = file.name.replace(/\.[^.]+$/, '') || 'product-photo';
+          return {
+            fileName: `${cleanName}.jpg`,
+            mimeType: 'image/jpeg',
+            base64Data,
+          };
+        }
+      }
+    } catch {
+      // Fallback to direct file encoding below
+    }
+  }
+
+  if (isVideo && file.size > 3.5 * 1024 * 1024) {
+    throw new Error(
+      'Video exceeds 3.5MB upload limit. Upload a shorter clip or paste an MP4/WebM URL.',
+    );
+  }
+  if (!isVideo && !isImage) {
+    throw new Error('Only photo and video files are supported.');
+  }
+  if (file.size > 3.5 * 1024 * 1024) {
+    throw new Error('File exceeds 3.5MB upload limit after compression.');
+  }
+
+  const base64Data = await blobToBase64(file);
+  return {
+    fileName: file.name,
+    mimeType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    base64Data,
+  };
+}
+
 export function AdminPanel({
   products,
   categories,
   settings,
   onExitAdmin,
+  onSessionExpired,
   onProductsChanged,
   onCategoriesChanged,
   onSettingsChanged,
@@ -119,33 +214,80 @@ export function AdminPanel({
   const [setMerchantName, setSetMerchantName] = useState(settings.merchantName);
   const [setFreeThreshold, setSetFreeThreshold] = useState(String(settings.freeShippingThreshold));
   const [setShippingFee, setSetShippingFee] = useState(String(settings.shippingFee));
-  const [setRtdbUrl, setSetRtdbUrl] = useState(
-    settings.firebaseRtdbUrl || 'https://bantuu-store-default-rtdb.firebaseio.com',
-  );
+  const [setRtdbUrl, setSetRtdbUrl] = useState(settings.firebaseRtdbUrl || '');
+  const [adminRtdbUrl, setAdminRtdbUrl] = useState(settings.firebaseRtdbUrl || '');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
 
-  const loadOrders = useCallback(async (silent = false) => {
-    if (!silent) setOrdersLoading(true);
-    setOrdersError('');
-    try {
-      const res = await fetch('/api/orders');
-      if (!res.ok) throw new Error('Failed to load orders');
-      const data = await res.json();
-      setOrders(data.orders || []);
-      if (data.rtdb) setRtdbInfo(data.rtdb);
-    } catch {
-      if (!silent) setOrdersError('Could not load orders from server.');
-    } finally {
-      if (!silent) setOrdersLoading(false);
+  const handleUnauthorized = useCallback(() => {
+    if (onSessionExpired) {
+      onSessionExpired();
     }
-  }, []);
+  }, [onSessionExpired]);
+
+  const loadOrders = useCallback(
+    async (silent = false) => {
+      if (!silent) setOrdersLoading(true);
+      if (!silent) setOrdersError('');
+      try {
+        const res = await fetch('/api/orders', { credentials: 'include' });
+        if (res.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        const { data } = await parseApiJson<{ orders?: Order[]; rtdb?: RtdbStateInfo; error?: string }>(
+          res,
+        );
+        if (!res.ok || !data) {
+          throw new Error(data?.error || 'Failed to load orders');
+        }
+        setOrders(data.orders || []);
+        if (data.rtdb) setRtdbInfo(data.rtdb);
+      } catch (err) {
+        if (!silent) {
+          setOrdersError(
+            err instanceof Error ? err.message : 'Could not load orders from server.',
+          );
+        }
+      } finally {
+        if (!silent) setOrdersLoading(false);
+      }
+    },
+    [handleUnauthorized],
+  );
+
+  const loadAdminSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings', { credentials: 'include' });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{ settings?: StoreSettings; rtdb?: RtdbStateInfo }>(res);
+      if (res.ok && data?.settings) {
+        onSettingsChanged(data.settings);
+        if (data.settings.firebaseRtdbUrl) {
+          setAdminRtdbUrl(data.settings.firebaseRtdbUrl);
+          setSetRtdbUrl(data.settings.firebaseRtdbUrl);
+        }
+        if (data.rtdb) setRtdbInfo(data.rtdb);
+      }
+    } catch {
+      // ignore transient network errors
+    }
+  }, [handleUnauthorized, onSettingsChanged]);
 
   const refreshCatalog = useCallback(async () => {
     try {
-      const res = await fetch('/api/store');
+      const res = await fetch('/api/store', { credentials: 'include' });
       if (!res.ok) return;
-      const data = await res.json();
+      const { data } = await parseApiJson<{
+        products?: Product[];
+        categories?: string[];
+        rtdb?: RtdbStateInfo;
+      }>(res);
+      if (!data) return;
       if (Array.isArray(data.products)) onProductsChanged(data.products);
       if (Array.isArray(data.categories)) onCategoriesChanged(data.categories, data.products);
       if (data.rtdb) setRtdbInfo(data.rtdb);
@@ -156,11 +298,17 @@ export function AdminPanel({
 
   useEffect(() => {
     loadOrders();
-  }, [loadOrders]);
+    loadAdminSettings();
+    const poll = window.setInterval(() => {
+      loadOrders(true);
+      refreshCatalog();
+    }, 10000);
+    return () => window.clearInterval(poll);
+  }, [loadOrders, loadAdminSettings, refreshCatalog]);
 
-  // Real-time Firebase RTDB EventSource subscription so new orders, products & categories appear live
+  // Real-time Firebase RTDB EventSource subscription (admin-only URL loaded from /api/admin/settings)
   useEffect(() => {
-    const cleanRtdb = normalizeFirebaseRtdbUrl(settings.firebaseRtdbUrl || '');
+    const cleanRtdb = normalizeFirebaseRtdbUrl(adminRtdbUrl);
     if (!cleanRtdb || typeof EventSource === 'undefined') return;
 
     let closed = false;
@@ -177,7 +325,7 @@ export function AdminPanel({
       closed = true;
       source.close();
     };
-  }, [settings.firebaseRtdbUrl, loadOrders, refreshCatalog]);
+  }, [adminRtdbUrl, loadOrders, refreshCatalog]);
 
   useEffect(() => {
     if (categories.length > 0 && !categories.includes(prodCategory)) {
@@ -192,9 +340,10 @@ export function AdminPanel({
     setSetMerchantName(settings.merchantName);
     setSetFreeThreshold(String(settings.freeShippingThreshold));
     setSetShippingFee(String(settings.shippingFee));
-    setSetRtdbUrl(
-      settings.firebaseRtdbUrl || 'https://bantuu-store-default-rtdb.firebaseio.com',
-    );
+    if (settings.firebaseRtdbUrl) {
+      setAdminRtdbUrl(settings.firebaseRtdbUrl);
+      setSetRtdbUrl(settings.firebaseRtdbUrl);
+    }
   }, [settings]);
 
   const filteredOrders = useMemo(
@@ -227,11 +376,16 @@ export function AdminPanel({
       const res = await fetch(`/api/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ status: nextStatus }),
       });
-      if (!res.ok) return;
-      const data = await res.json();
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order : o)));
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{ order?: Order; rtdb?: RtdbStateInfo }>(res);
+      if (!res.ok || !data?.order) return;
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order! : o)));
       if (selectedOrder?.id === orderId) {
         setSelectedOrder(data.order);
       }
@@ -246,7 +400,12 @@ export function AdminPanel({
     try {
       const res = await fetch(`/api/products/${productId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (res.ok) {
         onProductsChanged(products.filter((p) => p.id !== productId));
         setConfirmDeleteId(null);
@@ -266,31 +425,49 @@ export function AdminPanel({
     try {
       const uploadedItems: ProductMedia[] = [];
       for (const file of Array.from(files)) {
+        const prepared = await prepareMediaPayload(file);
         const res = await fetch('/api/upload', {
           method: 'POST',
-          headers: {
-            'Content-Type': file.type || 'application/octet-stream',
-            'x-file-name': file.name,
-          },
-          body: file,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(prepared),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          setUploadError(data.error || `Failed to upload ${file.name}`);
+        if (res.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        const { data } = await parseApiJson<{
+          id?: string;
+          type?: ProductMedia['type'];
+          url?: string;
+          name?: string;
+          error?: string;
+        }>(res);
+        if (!res.ok || !data?.url || !data?.type) {
+          setUploadError(
+            data?.error ||
+              (res.status === 413
+                ? 'File is too large for upload. Please try a smaller photo or paste a video URL.'
+                : `Failed to upload ${file.name} (HTTP ${res.status}).`),
+          );
           continue;
         }
         uploadedItems.push({
           id: data.id || `med-${Date.now()}-${Math.random()}`,
           type: data.type,
           url: data.url,
-          name: data.name || file.name,
+          name: data.name || prepared.fileName,
         });
       }
       if (uploadedItems.length > 0) {
         setProdMedia((prev) => [...prev, ...uploadedItems]);
       }
-    } catch {
-      setUploadError('Upload failed. Ensure file is an image or video under 50MB.');
+    } catch (err) {
+      setUploadError(
+        err instanceof Error
+          ? err.message
+          : 'Upload failed. Ensure file is an image or video under 3.5MB.',
+      );
     } finally {
       setUploadingMedia(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -339,6 +516,7 @@ export function AdminPanel({
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: prodName,
           category: prodCategory,
@@ -349,9 +527,22 @@ export function AdminPanel({
           featured: true,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.errors) setProdErrors(data.errors);
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{
+        product?: Product;
+        rtdb?: RtdbStateInfo;
+        errors?: Record<string, string>;
+        error?: string;
+      }>(res);
+      if (!res.ok || !data?.product) {
+        setProdErrors(
+          data?.errors || {
+            submit: data?.error || `Could not save product (HTTP ${res.status}).`,
+          },
+        );
         return;
       }
 
@@ -364,6 +555,8 @@ export function AdminPanel({
       setProdMedia([]);
       setProdSuccessMsg(`"${data.product.name}" published to Bantuu Store & Firebase RTDB.`);
       setActiveTab('products');
+    } catch {
+      setProdErrors({ submit: 'Could not reach the server to save product. Please try again.' });
     } finally {
       setProdSaving(false);
     }
@@ -384,19 +577,29 @@ export function AdminPanel({
       const res = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name: newCategoryName }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setCategoryError(data.error || 'Could not add category.');
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{
+        categories?: string[];
+        category?: string;
+        rtdb?: RtdbStateInfo;
+        error?: string;
+      }>(res);
+      if (!res.ok || !data) {
+        setCategoryError(data?.error || `Could not add category (HTTP ${res.status}).`);
         return;
       }
       onCategoriesChanged(data.categories || []);
       if (data.rtdb) setRtdbInfo(data.rtdb);
       setNewCategoryName('');
-      setCategorySuccess(`Category "${data.category}" added.`);
+      setCategorySuccess(`Category "${data.category || newCategoryName.trim()}" added.`);
     } catch {
-      setCategoryError('Network error while adding category.');
+      setCategoryError('Unable to reach server while adding category.');
     } finally {
       setCategoryBusy(false);
     }
@@ -416,20 +619,31 @@ export function AdminPanel({
       const res = await fetch('/api/categories', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ oldName, newName: editingCategoryDraft }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setCategoryError(data.error || 'Could not rename category.');
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{
+        categories?: string[];
+        products?: Product[];
+        newName?: string;
+        rtdb?: RtdbStateInfo;
+        error?: string;
+      }>(res);
+      if (!res.ok || !data) {
+        setCategoryError(data?.error || `Could not rename category (HTTP ${res.status}).`);
         return;
       }
       onCategoriesChanged(data.categories || [], data.products);
       if (data.rtdb) setRtdbInfo(data.rtdb);
       setEditingCategory(null);
       setEditingCategoryDraft('');
-      setCategorySuccess(`Category renamed to "${data.newName}".`);
+      setCategorySuccess(`Category renamed to "${data.newName || editingCategoryDraft.trim()}".`);
     } catch {
-      setCategoryError('Network error while renaming category.');
+      setCategoryError('Unable to reach server while renaming category.');
     } finally {
       setCategoryBusy(false);
     }
@@ -440,14 +654,24 @@ export function AdminPanel({
     setCategorySuccess('');
     setCategoryBusy(true);
     try {
-      const res = await fetch('/api/categories', {
+      const res = await fetch(`/api/categories?name=${encodeURIComponent(name)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setCategoryError(data.error || 'Could not delete category.');
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{
+        categories?: string[];
+        products?: Product[];
+        rtdb?: RtdbStateInfo;
+        error?: string;
+      }>(res);
+      if (!res.ok || !data) {
+        setCategoryError(data?.error || `Could not delete category (HTTP ${res.status}).`);
         return;
       }
       onCategoriesChanged(data.categories || [], data.products);
@@ -455,7 +679,7 @@ export function AdminPanel({
       setConfirmDeleteCategory(null);
       setCategorySuccess(`Category "${name}" deleted.`);
     } catch {
-      setCategoryError('Network error while deleting category.');
+      setCategoryError('Unable to reach server while deleting category.');
     } finally {
       setCategoryBusy(false);
     }
@@ -465,10 +689,12 @@ export function AdminPanel({
     e.preventDefault();
     setSettingsSaving(true);
     setSettingsSaved(false);
+    setSettingsError('');
     try {
       const res = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           storeName: setStoreName,
           upiId: setUpiId,
@@ -479,13 +705,26 @@ export function AdminPanel({
           firebaseRtdbUrl: setRtdbUrl,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        onSettingsChanged(data.settings);
-        if (data.rtdb) setRtdbInfo(data.rtdb);
-        setSettingsSaved(true);
-        window.setTimeout(() => setSettingsSaved(false), 2500);
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
       }
+      const { data } = await parseApiJson<{
+        settings?: StoreSettings;
+        rtdb?: RtdbStateInfo;
+        error?: string;
+      }>(res);
+      if (!res.ok || !data?.settings) {
+        setSettingsError(data?.error || 'Could not save settings.');
+        return;
+      }
+      onSettingsChanged(data.settings);
+      if (data.settings.firebaseRtdbUrl) setAdminRtdbUrl(data.settings.firebaseRtdbUrl);
+      if (data.rtdb) setRtdbInfo(data.rtdb);
+      setSettingsSaved(true);
+      window.setTimeout(() => setSettingsSaved(false), 2500);
+    } catch {
+      setSettingsError('Unable to reach server while saving settings.');
     } finally {
       setSettingsSaving(false);
     }
@@ -1342,6 +1581,11 @@ export function AdminPanel({
 
                 {uploadError && <p className="text-xs text-[#B91C1C]">{uploadError}</p>}
                 {prodErrors.media && <p className="text-xs text-[#B91C1C]">{prodErrors.media}</p>}
+                {prodErrors.submit && (
+                  <p role="alert" className="text-xs text-[#B91C1C] font-medium">
+                    {prodErrors.submit}
+                  </p>
+                )}
 
                 {prodMedia.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
@@ -1434,7 +1678,7 @@ export function AdminPanel({
                   type="url"
                   value={setRtdbUrl}
                   onChange={(e) => setSetRtdbUrl(e.target.value)}
-                  placeholder="https://bantuu-store-default-rtdb.firebaseio.com"
+                  placeholder="https://your-project-default-rtdb.firebaseio.com"
                   className="w-full px-3.5 py-2.5 text-xs font-mono rounded-lg border border-[#DED8C8] bg-white focus:outline-none focus:border-[#0F1D32]"
                 />
                 <p className="text-[11px] text-[#5C5852]">
@@ -1541,9 +1785,13 @@ export function AdminPanel({
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#DED8C8] flex items-center justify-between">
-                <span className="text-xs text-[#8A6D32] font-semibold">
-                  {settingsSaved ? 'Settings saved & synced to Firebase RTDB.' : ''}
+              <div className="pt-3 border-t border-[#DED8C8] flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold">
+                  {settingsError ? (
+                    <span className="text-[#B91C1C]">{settingsError}</span>
+                  ) : settingsSaved ? (
+                    <span className="text-[#8A6D32]">Settings saved &amp; synced to Firebase RTDB.</span>
+                  ) : null}
                 </span>
                 <button
                   type="submit"

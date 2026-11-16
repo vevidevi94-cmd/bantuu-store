@@ -20,8 +20,7 @@ import {
   filterProducts,
   formatINR,
   getPrimaryProductImage,
-  isAdminSecretSearchQuery,
-  normalizeFirebaseRtdbUrl,
+  sanitizeCartWithCatalog,
   type CartItem,
   type Order,
   type Product,
@@ -38,7 +37,6 @@ const DEFAULT_SETTINGS: StoreSettings = {
   merchantName: 'Bantuu Store Retail',
   freeShippingThreshold: 999,
   shippingFee: 79,
-  firebaseRtdbUrl: 'https://bantuu-store-default-rtdb.firebaseio.com',
 };
 
 const DEFAULT_CATEGORIES = [
@@ -62,7 +60,7 @@ function readInitialAdminMode(): boolean {
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState<boolean>(readInitialAdminMode);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState<boolean>(readInitialAdminMode);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [storeCategories, setStoreCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [settings, setSettings] = useState<StoreSettings>(DEFAULT_SETTINGS);
@@ -114,10 +112,12 @@ export default function App() {
     if (!silent) setLoading(true);
     setLoadError('');
     try {
-      const res = await fetch('/api/store');
+      const res = await fetch('/api/store', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load store');
       const data = await res.json();
-      setProducts(data.products || []);
+      const loadedProducts: Product[] = Array.isArray(data.products) ? data.products : [];
+      setProducts(loadedProducts);
+      setCart((prev) => sanitizeCartWithCatalog(prev, loadedProducts));
       if (Array.isArray(data.categories)) setStoreCategories(data.categories);
       if (data.settings) setSettings(data.settings);
     } catch {
@@ -131,24 +131,42 @@ export default function App() {
     loadStore();
   }, [loadStore]);
 
-  // Real-time Firebase RTDB stream listener for products, categories & settings changes
+  // Verify existing server-side admin cookie session when visiting #admin / /admin
+  const checkAdminSessionAndPrompt = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/session', { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok && data?.authenticated) {
+        setIsAdminAuthenticated(true);
+        setIsAdminMode(true);
+        setIsPasswordModalOpen(false);
+        return;
+      }
+    } catch {
+      // fall through to prompt
+    }
+    setIsAdminAuthenticated(false);
+    setIsAdminMode(true);
+    setIsPasswordModalOpen(true);
+  }, []);
+
   useEffect(() => {
-    const cleanRtdb = normalizeFirebaseRtdbUrl(settings.firebaseRtdbUrl || '');
-    if (!cleanRtdb || typeof EventSource === 'undefined') return;
+    if (readInitialAdminMode()) {
+      checkAdminSessionAndPrompt();
+    }
+  }, [checkAdminSessionAndPrompt]);
 
-    let closed = false;
-    const source = new EventSource(`${cleanRtdb}/.json`);
-    const handleStream = () => {
-      if (!closed) loadStore(true);
-    };
-    source.addEventListener('put', handleStream);
-    source.addEventListener('patch', handleStream);
-
+  // Refresh public storefront catalog silently on focus and gentle polling (no client RTDB exposure)
+  useEffect(() => {
+    if (isAdminMode) return;
+    const onFocus = () => loadStore(true);
+    window.addEventListener('focus', onFocus);
+    const interval = window.setInterval(() => loadStore(true), 15000);
     return () => {
-      closed = true;
-      source.close();
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(interval);
     };
-  }, [settings.firebaseRtdbUrl, loadStore]);
+  }, [isAdminMode, loadStore]);
 
   useEffect(() => {
     try {
@@ -169,13 +187,12 @@ export default function App() {
   useEffect(() => {
     const syncHash = () => {
       if (window.location.hash === '#admin' || window.location.pathname === '/admin') {
-        setIsAdminMode(true);
-        setIsPasswordModalOpen(true);
+        checkAdminSessionAndPrompt();
       }
     };
     window.addEventListener('hashchange', syncHash);
     return () => window.removeEventListener('hashchange', syncHash);
-  }, []);
+  }, [checkAdminSessionAndPrompt]);
 
   const enterAdminMode = () => {
     setIsAdminAuthenticated(true);
@@ -187,7 +204,8 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
-  const exitAdminMode = () => {
+  const exitAdminMode = useCallback(() => {
+    fetch('/api/admin/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);
     setIsAdminMode(false);
     setIsAdminAuthenticated(false);
     setIsPasswordModalOpen(false);
@@ -196,7 +214,12 @@ export default function App() {
     }
     loadStore(true);
     window.scrollTo({ top: 0 });
-  };
+  }, [loadStore]);
+
+  const handleAdminSessionExpired = useCallback(() => {
+    setIsAdminAuthenticated(false);
+    setIsPasswordModalOpen(true);
+  }, []);
 
   const handleCategoriesUpdated = useCallback(
     (nextCategories: string[], nextProducts?: Product[]) => {
@@ -208,11 +231,26 @@ export default function App() {
     [],
   );
 
-  const handleCatalogSearchSubmit = (e: FormEvent) => {
+  const handleCatalogSearchSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (isAdminSecretSearchQuery(searchQuery)) {
-      setSearchQuery('');
-      setIsPasswordModalOpen(true);
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    try {
+      const res = await fetch('/api/admin/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ query: trimmed }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.triggered) {
+          setSearchQuery('');
+          await checkAdminSessionAndPrompt();
+        }
+      }
+    } catch {
+      // ignore search trigger network errors so regular search keeps working
     }
   };
 
@@ -296,11 +334,13 @@ export default function App() {
   };
 
   const handleCartCheckout = () => {
-    if (cart.length === 0) return;
+    const authoritativeItems = sanitizeCartWithCatalog(cart, products);
+    setCart(authoritativeItems);
+    if (authoritativeItems.length === 0) return;
     setIsCartOpen(false);
     setCheckoutState({
       isOpen: true,
-      items: cart,
+      items: authoritativeItems,
       modeLabel: 'Bag Checkout',
       clearCartOnSuccess: true,
     });
@@ -342,6 +382,7 @@ export default function App() {
         categories={storeCategories}
         settings={settings}
         onExitAdmin={exitAdminMode}
+        onSessionExpired={handleAdminSessionExpired}
         onProductsChanged={setProducts}
         onCategoriesChanged={handleCategoriesUpdated}
         onSettingsChanged={setSettings}

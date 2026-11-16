@@ -342,12 +342,31 @@ export function normalizeRtdbMap<T extends { id?: string; createdAt?: string }>(
   return [];
 }
 
-export function isAdminSecretSearchQuery(query: string): boolean {
-  return (query || '').trim().toLowerCase() === 'bantuustore';
-}
-
-export function verifyAdminPassword(passcode: string): boolean {
-  return (passcode || '').trim() === '12348765';
+export function sanitizeCartWithCatalog(cart: CartItem[], catalog: Product[]): CartItem[] {
+  if (!Array.isArray(cart) || !Array.isArray(catalog) || catalog.length === 0) {
+    return [];
+  }
+  const byId = new Map(catalog.map((p) => [p.id, p]));
+  const sanitized: CartItem[] = [];
+  for (const item of cart) {
+    if (!item || typeof item.productId !== 'string') continue;
+    const prod = byId.get(item.productId);
+    if (!prod || prod.stock <= 0) continue;
+    const requestedQty = Number(item.quantity);
+    const safeQty = Math.min(
+      prod.stock,
+      Math.max(1, Number.isFinite(requestedQty) ? Math.floor(requestedQty) : 1),
+    );
+    sanitized.push({
+      productId: prod.id,
+      name: prod.name,
+      price: prod.price,
+      quantity: safeQty,
+      imageUrl: getPrimaryProductImage(prod),
+      category: prod.category,
+    });
+  }
+  return sanitized;
 }
 
 export function normalizeCategoryName(name: string): string {

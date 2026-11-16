@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Lock, X } from 'lucide-react';
-import { verifyAdminPassword } from '../utils/storeLogic';
 
 interface AdminPasswordModalProps {
   isOpen: boolean;
@@ -12,6 +11,7 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
   const [passcode, setPasscode] = useState('');
   const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -19,6 +19,7 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
       setPasscode('');
       setError('');
       setShowPasscode(false);
+      setSubmitting(false);
       window.setTimeout(() => {
         inputRef.current?.focus();
       }, 40);
@@ -27,15 +28,42 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!verifyAdminPassword(passcode)) {
-      setError('Incorrect admin password. Please try again.');
+    if (!passcode.trim()) {
+      setError('Please enter your admin password.');
       return;
     }
+
     setError('');
-    setPasscode('');
-    onSuccess();
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ passcode }),
+      });
+      const text = await res.text();
+      let data: { authenticated?: boolean; error?: string } = {};
+      try {
+        data = text ? (JSON.parse(text) as { authenticated?: boolean; error?: string }) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!res.ok || !data.authenticated) {
+        setError(data.error || 'Incorrect admin password. Please try again.');
+        return;
+      }
+
+      setPasscode('');
+      onSuccess();
+    } catch {
+      setError('Unable to reach authentication server. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -127,9 +155,10 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[#0F1D32] text-[#F7F5EE] hover:bg-[#172A46] cursor-pointer"
+              disabled={submitting}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[#0F1D32] text-[#F7F5EE] hover:bg-[#172A46] disabled:opacity-60 cursor-pointer"
             >
-              Unlock Admin Panel
+              {submitting ? 'Verifying...' : 'Unlock Admin Panel'}
             </button>
           </div>
         </form>

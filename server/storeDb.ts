@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import type { Order, OrderStatus, Product, StoreSettings } from '../src/utils/storeLogic';
+import type { Order, OrderStatus, Product, StoreSettings } from '../src/utils/storeLogic.js';
 import {
   calculateCartTotals,
   normalizeCategoryName,
   normalizeFirebaseRtdbUrl,
   validateCategoryName,
-} from '../src/utils/storeLogic';
+} from '../src/utils/storeLogic.js';
 import {
   deleteProductFromRtdb,
   fetchAllFromRtdb,
@@ -17,7 +17,7 @@ import {
   pushProductToRtdb,
   pushSettingsToRtdb,
   updateOrderStatusInRtdb,
-} from './firebaseRtdb';
+} from './firebaseRtdb.js';
 
 export interface StoreDatabase {
   products: Product[];
@@ -252,13 +252,56 @@ function saveDb(db: StoreDatabase): void {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
 }
 
-export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
-  const db = ensureDbInitialized();
-  const rtdbUrl = normalizeFirebaseRtdbUrl(db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL);
-  if (!rtdbUrl) return db;
+let hasSyncedProcessWithRtdb = false;
+let activeMutations = 0;
+let lastMutationCompletedAt = 0;
+let mutationQueue: Promise<unknown> = Promise.resolve();
+let inFlightSync: Promise<StoreDatabase> | null = null;
 
-  const remote = await fetchAllFromRtdb(rtdbUrl);
-  if (!remote.ok) return db;
+function runMutation<T>(fn: () => Promise<T>): Promise<T> {
+  const run = async () => {
+    activeMutations += 1;
+    try {
+      return await fn();
+    } finally {
+      lastMutationCompletedAt = Date.now();
+      activeMutations -= 1;
+    }
+  };
+  const next = mutationQueue.then(run, run);
+  mutationQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
+export async function ensureColdStartSync(): Promise<void> {
+  if (hasSyncedProcessWithRtdb) return;
+  await syncWithRtdbOnBootOrRefresh().catch(() => undefined);
+  hasSyncedProcessWithRtdb = true;
+}
+
+export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
+  if (activeMutations > 0 || Date.now() - lastMutationCompletedAt < 4000) {
+    return ensureDbInitialized();
+  }
+  if (inFlightSync) {
+    return inFlightSync;
+  }
+
+  inFlightSync = (async () => {
+    const db = ensureDbInitialized();
+    const rtdbUrl = normalizeFirebaseRtdbUrl(db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL);
+    if (!rtdbUrl) return db;
+
+    const remote = await fetchAllFromRtdb(rtdbUrl);
+    if (!remote.ok) return db;
+    // If a mutation ran while fetchAllFromRtdb was in flight, do not overwrite local state with stale RTDB snapshot
+    if (activeMutations > 0 || Date.now() - lastMutationCompletedAt < 4000) {
+      return ensureDbInitialized();
+    }
+    hasSyncedProcessWithRtdb = true;
 
   // If RTDB hasn't been initialized with settings yet, merge any partial remote orders/products
   // with our local seed catalog and push the complete snapshot up to RTDB.
@@ -375,6 +418,13 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
     saveDb(db);
   }
   return db;
+  })();
+
+  try {
+    return await inFlightSync;
+  } finally {
+    inFlightSync = null;
+  }
 }
 
 export function getStoreSnapshot(): StoreDatabase {
@@ -394,44 +444,50 @@ export async function addProductRecord(input: {
   media: Product['media'];
   featured?: boolean;
 }): Promise<Product> {
-  const db = ensureDbInitialized();
-  const product: Product = {
-    id: `prod-${crypto.randomUUID().slice(0, 8)}`,
-    name: input.name.trim(),
-    category: input.category.trim(),
-    price: Math.round(input.price),
-    stock: Math.max(0, Math.floor(input.stock)),
-    description: input.description.trim(),
-    media: input.media,
-    featured: Boolean(input.featured),
-    createdAt: new Date().toISOString(),
-  };
-  db.products.unshift(product);
-  let categoriesChanged = false;
-  if (!db.categories.some((c) => c.toLowerCase() === product.category.toLowerCase())) {
-    db.categories.push(product.category);
-    categoriesChanged = true;
-  }
-  saveDb(db);
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const product: Product = {
+      id: `prod-${crypto.randomUUID().slice(0, 8)}`,
+      name: input.name.trim(),
+      category: input.category.trim(),
+      price: Math.round(input.price),
+      stock: Math.max(0, Math.floor(input.stock)),
+      description: input.description.trim(),
+      media: input.media,
+      featured: Boolean(input.featured),
+      createdAt: new Date().toISOString(),
+    };
+    db.products.unshift(product);
+    let categoriesChanged = false;
+    if (!db.categories.some((c) => c.toLowerCase() === product.category.toLowerCase())) {
+      db.categories.push(product.category);
+      categoriesChanged = true;
+    }
+    saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await pushProductToRtdb(rtdbUrl, product);
-  if (categoriesChanged) {
-    await pushCategoriesToRtdb(rtdbUrl, db.categories);
-  }
-  return product;
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushProductToRtdb(rtdbUrl, product);
+    if (categoriesChanged) {
+      await pushCategoriesToRtdb(rtdbUrl, db.categories);
+    }
+    return product;
+  });
 }
 
 export async function deleteProductRecord(productId: string): Promise<boolean> {
-  const db = ensureDbInitialized();
-  const before = db.products.length;
-  db.products = db.products.filter((p) => p.id !== productId);
-  if (db.products.length === before) return false;
-  saveDb(db);
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const before = db.products.length;
+    db.products = db.products.filter((p) => p.id !== productId);
+    if (db.products.length === before) return false;
+    saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await deleteProductFromRtdb(rtdbUrl, productId);
-  return true;
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await deleteProductFromRtdb(rtdbUrl, productId);
+    return true;
+  });
 }
 
 export async function createOrderRecord(input: {
@@ -445,213 +501,235 @@ export async function createOrderRecord(input: {
   upiTransactionId?: string;
   items: Array<{ productId: string; quantity: number }>;
 }): Promise<{ order?: Order; error?: string }> {
-  const db = ensureDbInitialized();
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
 
-  if (!Array.isArray(input.items) || input.items.length === 0) {
-    return { error: 'Cart is empty. Add at least one item before placing an order.' };
-  }
-
-  const resolvedItems: Order['items'] = [];
-  const updatedProducts: Product[] = [];
-
-  for (const requested of input.items) {
-    const product = db.products.find((p) => p.id === requested.productId);
-    if (!product) {
-      return { error: `Product "${requested.productId}" is no longer available.` };
+    if (!Array.isArray(input.items) || input.items.length === 0) {
+      return { error: 'Cart is empty. Add at least one item before placing an order.' };
     }
-    const qty = Math.max(1, Math.floor(requested.quantity));
-    if (product.stock < qty) {
-      return { error: `Only ${product.stock} unit(s) left in stock for "${product.name}".` };
+
+    const resolvedItems: Order['items'] = [];
+    const updatedProducts: Product[] = [];
+
+    for (const requested of input.items) {
+      const product = db.products.find((p) => p.id === requested.productId);
+      if (!product) {
+        return { error: `Product "${requested.productId}" is no longer available.` };
+      }
+      const rawQty = Number(requested.quantity);
+      if (!Number.isFinite(rawQty) || !Number.isInteger(rawQty) || rawQty < 1 || rawQty > 99) {
+        return { error: `Invalid quantity requested for "${product.name}".` };
+      }
+      const qty = rawQty;
+      if (product.stock < qty) {
+        return { error: `Only ${product.stock} unit(s) left in stock for "${product.name}".` };
+      }
+      const firstImage = product.media.find((m) => m.type === 'image')?.url || product.media[0]?.url || '';
+      resolvedItems.push({
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: qty,
+        imageUrl: firstImage,
+      });
     }
-    const firstImage = product.media.find((m) => m.type === 'image')?.url || product.media[0]?.url || '';
-    resolvedItems.push({
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      quantity: qty,
-      imageUrl: firstImage,
-    });
-  }
 
-  // Decrement stock
-  for (const item of resolvedItems) {
-    const prod = db.products.find((p) => p.id === item.productId);
-    if (prod) {
-      prod.stock = Math.max(0, prod.stock - item.quantity);
-      updatedProducts.push(prod);
+    // Decrement stock
+    for (const item of resolvedItems) {
+      const prod = db.products.find((p) => p.id === item.productId);
+      if (prod) {
+        prod.stock = Math.max(0, prod.stock - item.quantity);
+        updatedProducts.push(prod);
+      }
     }
-  }
 
-  const totals = calculateCartTotals(
-    resolvedItems,
-    db.settings.freeShippingThreshold,
-    db.settings.shippingFee,
-  );
+    const totals = calculateCartTotals(
+      resolvedItems,
+      db.settings.freeShippingThreshold,
+      db.settings.shippingFee,
+    );
 
-  const orderNumber = `BNT-${db.nextOrderSeq}`;
-  db.nextOrderSeq += 1;
+    const orderNumber = `BNT-${db.nextOrderSeq}`;
+    db.nextOrderSeq += 1;
 
-  const order: Order = {
-    id: `ord-${crypto.randomUUID().slice(0, 8)}`,
-    orderNumber,
-    customerName: input.customerName.trim(),
-    customerPhone: input.customerPhone.replace(/\D/g, ''),
-    address: input.address.trim(),
-    city: input.city.trim(),
-    pincode: input.pincode.replace(/\D/g, ''),
-    items: resolvedItems,
-    subtotal: totals.subtotal,
-    shippingFee: totals.shippingFee,
-    total: totals.total,
-    paymentMethod: input.paymentMethod,
-    upiCustomerId: input.paymentMethod === 'UPI' ? (input.upiCustomerId || '').trim() || undefined : undefined,
-    upiTransactionId: input.paymentMethod === 'UPI' ? (input.upiTransactionId || '').trim() : undefined,
-    status: 'Pending',
-    createdAt: new Date().toISOString(),
-  };
+    const order: Order = {
+      id: `ord-${crypto.randomUUID().slice(0, 8)}`,
+      orderNumber,
+      customerName: input.customerName.trim(),
+      customerPhone: input.customerPhone.replace(/\D/g, ''),
+      address: input.address.trim(),
+      city: input.city.trim(),
+      pincode: input.pincode.replace(/\D/g, ''),
+      items: resolvedItems,
+      subtotal: totals.subtotal,
+      shippingFee: totals.shippingFee,
+      total: totals.total,
+      paymentMethod: input.paymentMethod,
+      upiCustomerId: input.paymentMethod === 'UPI' ? (input.upiCustomerId || '').trim() || undefined : undefined,
+      upiTransactionId: input.paymentMethod === 'UPI' ? (input.upiTransactionId || '').trim() : undefined,
+      status: 'Pending',
+      createdAt: new Date().toISOString(),
+    };
 
-  db.orders.unshift(order);
-  saveDb(db);
+    db.orders.unshift(order);
+    saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await pushOrderToRtdb(rtdbUrl, order);
-  await Promise.all(updatedProducts.map((p) => pushProductToRtdb(rtdbUrl, p)));
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushOrderToRtdb(rtdbUrl, order);
+    await Promise.all(updatedProducts.map((p) => pushProductToRtdb(rtdbUrl, p)));
 
-  return { order };
+    return { order };
+  });
 }
 
 export async function updateOrderStatusRecord(
   orderId: string,
   status: OrderStatus,
 ): Promise<Order | null> {
-  const db = ensureDbInitialized();
-  const order = db.orders.find((o) => o.id === orderId);
-  if (!order) return null;
-  order.status = status;
-  saveDb(db);
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const order = db.orders.find((o) => o.id === orderId);
+    if (!order) return null;
+    order.status = status;
+    saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await updateOrderStatusInRtdb(rtdbUrl, orderId, status);
-  return order;
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await updateOrderStatusInRtdb(rtdbUrl, orderId, status);
+    return order;
+  });
 }
 
 export async function updateStoreSettingsRecord(
   patch: Partial<StoreSettings>,
 ): Promise<StoreSettings> {
-  const db = ensureDbInitialized();
-  const nextRtdbUrl =
-    patch.firebaseRtdbUrl !== undefined
-      ? normalizeFirebaseRtdbUrl(patch.firebaseRtdbUrl) || db.settings.firebaseRtdbUrl
-      : db.settings.firebaseRtdbUrl;
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const nextRtdbUrl =
+      patch.firebaseRtdbUrl !== undefined
+        ? normalizeFirebaseRtdbUrl(patch.firebaseRtdbUrl) || db.settings.firebaseRtdbUrl
+        : db.settings.firebaseRtdbUrl;
 
-  db.settings = {
-    ...db.settings,
-    storeName: patch.storeName?.trim() || db.settings.storeName,
-    upiId: patch.upiId?.trim() || db.settings.upiId,
-    upiQrUrl:
-      patch.upiQrUrl !== undefined
-        ? patch.upiQrUrl.trim() || DEFAULT_UPI_QR_URL
-        : db.settings.upiQrUrl || DEFAULT_UPI_QR_URL,
-    merchantName: patch.merchantName?.trim() || db.settings.merchantName,
-    freeShippingThreshold:
-      typeof patch.freeShippingThreshold === 'number' && patch.freeShippingThreshold >= 0
-        ? Math.round(patch.freeShippingThreshold)
-        : db.settings.freeShippingThreshold,
-    shippingFee:
-      typeof patch.shippingFee === 'number' && patch.shippingFee >= 0
-        ? Math.round(patch.shippingFee)
-        : db.settings.shippingFee,
-    firebaseRtdbUrl: nextRtdbUrl,
-  };
-  saveDb(db);
+    db.settings = {
+      ...db.settings,
+      storeName: patch.storeName?.trim() || db.settings.storeName,
+      upiId: patch.upiId?.trim() || db.settings.upiId,
+      upiQrUrl:
+        patch.upiQrUrl !== undefined
+          ? patch.upiQrUrl.trim() || DEFAULT_UPI_QR_URL
+          : db.settings.upiQrUrl || DEFAULT_UPI_QR_URL,
+      merchantName: patch.merchantName?.trim() || db.settings.merchantName,
+      freeShippingThreshold:
+        typeof patch.freeShippingThreshold === 'number' && patch.freeShippingThreshold >= 0
+          ? Math.round(patch.freeShippingThreshold)
+          : db.settings.freeShippingThreshold,
+      shippingFee:
+        typeof patch.shippingFee === 'number' && patch.shippingFee >= 0
+          ? Math.round(patch.shippingFee)
+          : db.settings.shippingFee,
+      firebaseRtdbUrl: nextRtdbUrl,
+    };
+    saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await pushSettingsToRtdb(rtdbUrl, db.settings);
-  return db.settings;
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushSettingsToRtdb(rtdbUrl, db.settings);
+    return db.settings;
+  });
 }
 
 export async function addCategoryRecord(
   name: string,
-): Promise<{ categories: string[]; error?: string }> {
-  const db = ensureDbInitialized();
-  const validationError = validateCategoryName(name, db.categories);
-  if (validationError) {
-    return { categories: db.categories, error: validationError };
-  }
-  const clean = normalizeCategoryName(name);
-  db.categories.push(clean);
-  saveDb(db);
+): Promise<{ categories: string[]; category?: string; error?: string }> {
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const validationError = validateCategoryName(name, db.categories);
+    if (validationError) {
+      return { categories: db.categories, error: validationError };
+    }
+    const clean = normalizeCategoryName(name);
+    db.categories.push(clean);
+    saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await pushCategoriesToRtdb(rtdbUrl, db.categories);
-  return { categories: db.categories };
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushCategoriesToRtdb(rtdbUrl, db.categories);
+    return { categories: db.categories, category: clean };
+  });
 }
 
 export async function renameCategoryRecord(
   oldName: string,
   newName: string,
-): Promise<{ categories: string[]; products: Product[]; error?: string }> {
-  const db = ensureDbInitialized();
-  const cleanOld = normalizeCategoryName(oldName);
-  const idx = db.categories.findIndex((c) => c.toLowerCase() === cleanOld.toLowerCase());
-  if (idx === -1) {
-    return { categories: db.categories, products: db.products, error: 'Category not found.' };
-  }
-
-  const validationError = validateCategoryName(newName, db.categories, db.categories[idx]);
-  if (validationError) {
-    return { categories: db.categories, products: db.products, error: validationError };
-  }
-
-  const cleanNew = normalizeCategoryName(newName);
-  const previousExact = db.categories[idx];
-  db.categories[idx] = cleanNew;
-
-  const updatedProducts: Product[] = [];
-  for (const prod of db.products) {
-    if (prod.category.toLowerCase() === previousExact.toLowerCase()) {
-      prod.category = cleanNew;
-      updatedProducts.push(prod);
+): Promise<{ categories: string[]; products: Product[]; newName?: string; error?: string }> {
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const cleanOld = normalizeCategoryName(oldName);
+    const idx = db.categories.findIndex((c) => c.toLowerCase() === cleanOld.toLowerCase());
+    if (idx === -1) {
+      return { categories: db.categories, products: db.products, error: 'Category not found.' };
     }
-  }
-  saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await pushCategoriesToRtdb(rtdbUrl, db.categories);
-  await Promise.all(updatedProducts.map((p) => pushProductToRtdb(rtdbUrl, p)));
-  return { categories: db.categories, products: db.products };
+    const validationError = validateCategoryName(newName, db.categories, db.categories[idx]);
+    if (validationError) {
+      return { categories: db.categories, products: db.products, error: validationError };
+    }
+
+    const cleanNew = normalizeCategoryName(newName);
+    const previousExact = db.categories[idx];
+    db.categories[idx] = cleanNew;
+
+    const updatedProducts: Product[] = [];
+    for (const prod of db.products) {
+      if (prod.category.toLowerCase() === previousExact.toLowerCase()) {
+        prod.category = cleanNew;
+        updatedProducts.push(prod);
+      }
+    }
+    saveDb(db);
+
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushCategoriesToRtdb(rtdbUrl, db.categories);
+    await Promise.all(updatedProducts.map((p) => pushProductToRtdb(rtdbUrl, p)));
+    return { categories: db.categories, products: db.products, newName: cleanNew };
+  });
 }
 
 export async function deleteCategoryRecord(
   name: string,
 ): Promise<{ categories: string[]; products: Product[]; error?: string }> {
-  const db = ensureDbInitialized();
-  const clean = normalizeCategoryName(name);
-  const idx = db.categories.findIndex((c) => c.toLowerCase() === clean.toLowerCase());
-  if (idx === -1) {
-    return { categories: db.categories, products: db.products, error: 'Category not found.' };
-  }
-
-  const removedExact = db.categories[idx];
-  const remaining = db.categories.filter((_, i) => i !== idx);
-  const fallbackCategory = remaining[0] || 'General';
-  if (remaining.length === 0) {
-    remaining.push(fallbackCategory);
-  }
-  db.categories = remaining;
-
-  const updatedProducts: Product[] = [];
-  for (const prod of db.products) {
-    if (prod.category.toLowerCase() === removedExact.toLowerCase()) {
-      prod.category = fallbackCategory;
-      updatedProducts.push(prod);
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const clean = normalizeCategoryName(name);
+    const idx = db.categories.findIndex((c) => c.toLowerCase() === clean.toLowerCase());
+    if (idx === -1) {
+      return { categories: db.categories, products: db.products, error: 'Category not found.' };
     }
-  }
-  saveDb(db);
 
-  const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
-  await pushCategoriesToRtdb(rtdbUrl, db.categories);
-  await Promise.all(updatedProducts.map((p) => pushProductToRtdb(rtdbUrl, p)));
-  return { categories: db.categories, products: db.products };
+    const removedExact = db.categories[idx];
+    const remaining = db.categories.filter((_, i) => i !== idx);
+    const fallbackCategory = remaining[0] || 'General';
+    if (remaining.length === 0) {
+      remaining.push(fallbackCategory);
+    }
+    db.categories = remaining;
+
+    const updatedProducts: Product[] = [];
+    for (const prod of db.products) {
+      if (prod.category.toLowerCase() === removedExact.toLowerCase()) {
+        prod.category = fallbackCategory;
+        updatedProducts.push(prod);
+      }
+    }
+    saveDb(db);
+
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushCategoriesToRtdb(rtdbUrl, db.categories);
+    await Promise.all(updatedProducts.map((p) => pushProductToRtdb(rtdbUrl, p)));
+    return { categories: db.categories, products: db.products };
+  });
 }
 

@@ -1,8 +1,8 @@
 import path from 'node:path';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { createApiApp } from './server/apiApp';
-import { syncWithRtdbOnBootOrRefresh } from './server/storeDb';
+import { createApiApp } from './server/apiApp.js';
+import { syncWithRtdbOnBootOrRefresh } from './server/storeDb.js';
 
 const PORT = 3000;
 

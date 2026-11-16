@@ -9,17 +9,23 @@ import {
   formatINR,
   formatOrderDateTime,
   inferMediaTypeFromUrl,
-  isAdminSecretSearchQuery,
   normalizeCategoryName,
   normalizeFirebaseRtdbUrl,
   normalizeRtdbMap,
+  sanitizeCartWithCatalog,
   validateCategoryName,
   validateCheckoutForm,
   validateProductForm,
-  verifyAdminPassword,
+  type CartItem,
   type Order,
   type Product,
 } from './storeLogic';
+import {
+  createAdminSessionToken,
+  isAdminTriggerQuery,
+  verifyAdminPasscode,
+  verifyAdminSessionToken,
+} from '../../server/adminAuth.js';
 
 test('formatINR formats Indian currency cleanly', () => {
   assert.equal(formatINR(1499), '₹1,499');
@@ -214,14 +220,79 @@ test('normalizeRtdbMap converts Firebase RTDB object maps into sorted arrays', (
   assert.equal(mapped[1].id, 'k1');
 });
 
-test('isAdminSecretSearchQuery and verifyAdminPassword enforce exact trigger and passcode', () => {
-  assert.equal(isAdminSecretSearchQuery('bantuustore'), true);
-  assert.equal(isAdminSecretSearchQuery('  BantuuStore '), true);
-  assert.equal(isAdminSecretSearchQuery('leather tote'), false);
+test('server adminAuth verifies trigger, passcode, and signed session tokens', () => {
+  assert.equal(isAdminTriggerQuery('bantuustore'), true);
+  assert.equal(isAdminTriggerQuery('  BantuuStore '), true);
+  assert.equal(isAdminTriggerQuery('leather tote'), false);
+  assert.equal(isAdminTriggerQuery(''), false);
 
-  assert.equal(verifyAdminPassword('12348765'), true);
-  assert.equal(verifyAdminPassword('1234'), false);
-  assert.equal(verifyAdminPassword(''), false);
+  assert.equal(verifyAdminPasscode('12348765'), true);
+  assert.equal(verifyAdminPasscode('1234'), false);
+  assert.equal(verifyAdminPasscode(''), false);
+
+  const token = createAdminSessionToken(60_000);
+  assert.equal(verifyAdminSessionToken(token), true);
+  assert.equal(verifyAdminSessionToken(`${token}tampered`), false);
+  assert.equal(verifyAdminSessionToken(''), false);
+  assert.equal(verifyAdminSessionToken(createAdminSessionToken(-1000)), false);
+});
+
+test('sanitizeCartWithCatalog resets tampered prices and caps stock quantities', () => {
+  const catalog: Product[] = [
+    {
+      id: 'p1',
+      name: 'Brass Watch',
+      category: 'Watches',
+      price: 5499,
+      stock: 3,
+      description: 'Brushed steel wristwatch.',
+      media: [{ id: 'm1', type: 'image', url: '/watch.jpg' }],
+      createdAt: '2026-11-15T10:00:00.000Z',
+    },
+    {
+      id: 'p2',
+      name: 'Sold Out Scarf',
+      category: 'Apparel',
+      price: 999,
+      stock: 0,
+      description: 'Out of stock scarf.',
+      media: [{ id: 'm2', type: 'image', url: '/scarf.jpg' }],
+      createdAt: '2026-11-15T10:00:00.000Z',
+    },
+  ];
+  const tamperedCart: CartItem[] = [
+    {
+      productId: 'p1',
+      name: 'Tampered Watch',
+      price: 1,
+      quantity: 10,
+      imageUrl: '/fake.jpg',
+      category: 'Fake',
+    },
+    {
+      productId: 'p2',
+      name: 'Sold Out Scarf',
+      price: 1,
+      quantity: 1,
+      imageUrl: '/scarf.jpg',
+      category: 'Apparel',
+    },
+    {
+      productId: 'non-existent',
+      name: 'Ghost',
+      price: 5,
+      quantity: 2,
+      imageUrl: '/ghost.jpg',
+      category: 'Apparel',
+    },
+  ];
+
+  const clean = sanitizeCartWithCatalog(tamperedCart, catalog);
+  assert.equal(clean.length, 1);
+  assert.equal(clean[0].price, 5499);
+  assert.equal(clean[0].quantity, 3);
+  assert.equal(clean[0].name, 'Brass Watch');
+  assert.equal(clean[0].imageUrl, '/watch.jpg');
 });
 
 test('validateCategoryName enforces uniqueness, length, and reserved All check', () => {
