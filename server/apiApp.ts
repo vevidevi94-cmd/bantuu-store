@@ -17,6 +17,7 @@ import {
   addProductRecord,
   createOrderRecord,
   deleteCategoryRecord,
+  deleteOrderRecord,
   deleteProductRecord,
   ensureColdStartSync,
   getStoreSnapshot,
@@ -335,6 +336,15 @@ export function createApiApp(): Express {
       return;
     }
     res.json({ order: updated, rtdb: getRtdbSyncState() });
+  });
+
+  app.delete('/api/orders/:id', requireAdminMiddleware, async (req, res) => {
+    const deleted = await deleteOrderRecord(String(req.params.id));
+    if (!deleted) {
+      res.status(404).json({ error: 'Order not found.' });
+      return;
+    }
+    res.json({ deleted: true, id: req.params.id, rtdb: getRtdbSyncState() });
   });
 
   app.patch('/api/settings', requireAdminMiddleware, async (req, res) => {

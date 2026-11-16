@@ -9,6 +9,7 @@ import {
   validateCategoryName,
 } from '../src/utils/storeLogic.js';
 import {
+  deleteOrderFromRtdb,
   deleteProductFromRtdb,
   fetchAllFromRtdb,
   pushCategoriesToRtdb,
@@ -600,6 +601,21 @@ export async function updateOrderStatusRecord(
     const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
     await updateOrderStatusInRtdb(rtdbUrl, orderId, status);
     return order;
+  });
+}
+
+export async function deleteOrderRecord(orderId: string): Promise<boolean> {
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const before = db.orders.length;
+    db.orders = db.orders.filter((o) => o.id !== orderId);
+    if (db.orders.length === before) return false;
+    saveDb(db);
+
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await deleteOrderFromRtdb(rtdbUrl, orderId);
+    return true;
   });
 }
 

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
 const COOKIE_NAME = 'bantuu_admin_session';
-const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const DEFAULT_TTL_MS = 365 * 24 * 60 * 60 * 1000; // 365 days (persists until explicit logout)
 
 function getPasscode(): string {
   return (process.env.ADMIN_PASSCODE || '12348765').trim();

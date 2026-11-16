@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Check,
   ClipboardList,
@@ -7,7 +7,7 @@ import {
   ShoppingBag,
   Zap,
 } from 'lucide-react';
-import { AdminPanel } from './components/AdminPanel';
+import { AdminPanel, type AdminTab } from './components/AdminPanel';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { BantuuLogo } from './components/BantuuLogo';
 import { CartDrawer } from './components/CartDrawer';
@@ -29,6 +29,18 @@ import {
 
 const CART_STORAGE_KEY = 'bantuu_store_cart_v1';
 const ORDERS_STORAGE_KEY = 'bantuu_customer_orders_v1';
+const ADMIN_STAY_IN_PANEL_KEY = 'bantuu_admin_active_view';
+
+type StoreOverlay = 'detail' | 'cart' | 'checkout' | 'track' | 'admin-password' | null;
+
+interface BantuuHistoryState {
+  bantuuApp: true;
+  view: 'store' | 'admin';
+  overlay: StoreOverlay;
+  productId: string | null;
+  adminTab: AdminTab;
+  adminOrderId: string | null;
+}
 
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: 'Bantuu Store',
@@ -48,7 +60,7 @@ const DEFAULT_CATEGORIES = [
   'Accessories',
 ];
 
-function readInitialAdminMode(): boolean {
+function readInitialAdminUrlFlag(): boolean {
   if (typeof window === 'undefined') return false;
   return (
     window.location.pathname === '/admin' ||
@@ -57,10 +69,56 @@ function readInitialAdminMode(): boolean {
   );
 }
 
+function readStayInAdminView(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(ADMIN_STAY_IN_PANEL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveStayInAdminView(stay: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (stay) {
+      localStorage.setItem(ADMIN_STAY_IN_PANEL_KEY, '1');
+    } else {
+      localStorage.removeItem(ADMIN_STAY_IN_PANEL_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getStoreBaseUrl(): string {
+  if (typeof window === 'undefined') return '/';
+  const pathname = window.location.pathname === '/admin' ? '/' : window.location.pathname || '/';
+  return `${pathname}${window.location.search || ''}`;
+}
+
 export default function App() {
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(readInitialAdminMode);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(
+    () => readInitialAdminUrlFlag() || readStayInAdminView(),
+  );
+  const [checkingAdminSession, setCheckingAdminSession] = useState<boolean>(
+    () => readInitialAdminUrlFlag() || readStayInAdminView(),
+  );
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [adminTab, setAdminTab] = useState<AdminTab>(() => {
+    if (typeof window !== 'undefined' && window.history.state?.bantuuApp) {
+      return (window.history.state as BantuuHistoryState).adminTab || 'orders';
+    }
+    return 'orders';
+  });
+  const [adminSelectedOrderId, setAdminSelectedOrderId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined' && window.history.state?.bantuuApp) {
+      return (window.history.state as BantuuHistoryState).adminOrderId || null;
+    }
+    return null;
+  });
+
   const [products, setProducts] = useState<Product[]>([]);
   const [storeCategories, setStoreCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [settings, setSettings] = useState<StoreSettings>(DEFAULT_SETTINGS);
@@ -108,6 +166,34 @@ export default function App() {
   });
   const [isTrackOpen, setIsTrackOpen] = useState(false);
 
+  const productsRef = useRef<Product[]>(products);
+  productsRef.current = products;
+  const isAdminAuthenticatedRef = useRef<boolean>(isAdminAuthenticated);
+  isAdminAuthenticatedRef.current = isAdminAuthenticated;
+  const checkoutCompletedRef = useRef(false);
+
+  const pushHistoryEntry = useCallback(
+    (next: Omit<BantuuHistoryState, 'bantuuApp'>, url?: string) => {
+      if (typeof window === 'undefined') return;
+      const payload: BantuuHistoryState = { bantuuApp: true, ...next };
+      const targetUrl =
+        url ?? (next.view === 'admin' ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl());
+      window.history.pushState(payload, '', targetUrl);
+    },
+    [],
+  );
+
+  const replaceHistoryEntry = useCallback(
+    (next: Omit<BantuuHistoryState, 'bantuuApp'>, url?: string) => {
+      if (typeof window === 'undefined') return;
+      const payload: BantuuHistoryState = { bantuuApp: true, ...next };
+      const targetUrl =
+        url ?? (next.view === 'admin' ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl());
+      window.history.replaceState(payload, '', targetUrl);
+    },
+    [],
+  );
+
   const loadStore = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setLoadError('');
@@ -131,30 +217,108 @@ export default function App() {
     loadStore();
   }, [loadStore]);
 
-  // Verify existing server-side admin cookie session when visiting #admin / /admin
-  const checkAdminSessionAndPrompt = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/session', { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok && data?.authenticated) {
-        setIsAdminAuthenticated(true);
-        setIsAdminMode(true);
-        setIsPasswordModalOpen(false);
-        return;
+  // Verify existing server-side admin cookie session when visiting #admin, reloading, or triggering bantuustore
+  const checkAdminSessionAndPrompt = useCallback(
+    async (options?: { autoOpenPrompt?: boolean; restorePanelIfValid?: boolean }) => {
+      const autoOpenPrompt = options?.autoOpenPrompt ?? true;
+      const restorePanelIfValid = options?.restorePanelIfValid ?? true;
+      try {
+        const res = await fetch('/api/admin/session', { credentials: 'include' });
+        const data = await res.json();
+        if (res.ok && data?.authenticated) {
+          setIsAdminAuthenticated(true);
+          isAdminAuthenticatedRef.current = true;
+          if (restorePanelIfValid) {
+            saveStayInAdminView(true);
+            setIsAdminMode(true);
+            setIsPasswordModalOpen(false);
+            if (
+              typeof window !== 'undefined' &&
+              window.history.state?.view !== 'admin'
+            ) {
+              pushHistoryEntry(
+                {
+                  view: 'admin',
+                  overlay: null,
+                  productId: null,
+                  adminTab: 'orders',
+                  adminOrderId: null,
+                },
+                `${getStoreBaseUrl()}#admin`,
+              );
+            }
+          }
+          setCheckingAdminSession(false);
+          return true;
+        }
+      } catch {
+        // fall through to unauthenticated handling
       }
-    } catch {
-      // fall through to prompt
-    }
-    setIsAdminAuthenticated(false);
-    setIsAdminMode(true);
-    setIsPasswordModalOpen(true);
-  }, []);
 
+      setIsAdminAuthenticated(false);
+      isAdminAuthenticatedRef.current = false;
+      saveStayInAdminView(false);
+      setCheckingAdminSession(false);
+
+      if (autoOpenPrompt) {
+        setIsAdminMode(readInitialAdminUrlFlag());
+        setIsPasswordModalOpen(true);
+        if (
+          typeof window !== 'undefined' &&
+          !readInitialAdminUrlFlag() &&
+          window.history.state?.overlay !== 'admin-password'
+        ) {
+          pushHistoryEntry(
+            {
+              view: 'store',
+              overlay: 'admin-password',
+              productId: null,
+              adminTab: 'orders',
+              adminOrderId: null,
+            },
+            getStoreBaseUrl(),
+          );
+        }
+      } else {
+        setIsAdminMode(false);
+        setIsPasswordModalOpen(false);
+      }
+      return false;
+    },
+    [pushHistoryEntry],
+  );
+
+  // Restore admin login state seamlessly across reloads until explicit Logout
   useEffect(() => {
-    if (readInitialAdminMode()) {
-      checkAdminSessionAndPrompt();
+    const wantsAdminUrl = readInitialAdminUrlFlag();
+    const wantsStayAdmin = readStayInAdminView();
+
+    if (typeof window !== 'undefined' && !window.history.state?.bantuuApp) {
+      replaceHistoryEntry(
+        {
+          view: wantsAdminUrl ? 'admin' : 'store',
+          overlay: null,
+          productId: null,
+          adminTab: 'orders',
+          adminOrderId: null,
+        },
+        wantsAdminUrl ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl(),
+      );
     }
-  }, [checkAdminSessionAndPrompt]);
+
+    if (wantsAdminUrl || wantsStayAdmin) {
+      checkAdminSessionAndPrompt({
+        autoOpenPrompt: wantsAdminUrl,
+        restorePanelIfValid: true,
+      });
+    } else {
+      // Silently pre-warm auth flag so searching `bantuustore` after going back to storefront opens Admin right away
+      checkAdminSessionAndPrompt({
+        autoOpenPrompt: false,
+        restorePanelIfValid: false,
+      });
+    }
+  }, [checkAdminSessionAndPrompt, replaceHistoryEntry]);
 
   // Refresh public storefront catalog silently on focus and gentle polling (no client RTDB exposure)
   useEffect(() => {
@@ -184,42 +348,194 @@ export default function App() {
     }
   }, [customerOrders]);
 
+  // Unified 1-step-at-a-time browser Back/Forward navigation across Storefront overlays & Admin views
   useEffect(() => {
-    const syncHash = () => {
-      if (window.location.hash === '#admin' || window.location.pathname === '/admin') {
-        checkAdminSessionAndPrompt();
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state as BantuuHistoryState | null;
+
+      if (state?.bantuuApp) {
+        if (state.view === 'admin') {
+          if (isAdminAuthenticatedRef.current) {
+            saveStayInAdminView(true);
+            setIsAdminMode(true);
+            setIsPasswordModalOpen(false);
+            setAdminTab(state.adminTab || 'orders');
+            setAdminSelectedOrderId(state.adminOrderId || null);
+          } else {
+            checkAdminSessionAndPrompt({ autoOpenPrompt: true, restorePanelIfValid: true });
+          }
+          return;
+        }
+
+        // Returned to Storefront view (does NOT log out admin session!)
+        saveStayInAdminView(false);
+        setIsAdminMode(false);
+        setAdminTab('orders');
+        setAdminSelectedOrderId(null);
+
+        setIsPasswordModalOpen(state.overlay === 'admin-password');
+        setIsCartOpen(state.overlay === 'cart');
+        setIsTrackOpen(state.overlay === 'track');
+
+        if (state.overlay === 'detail' && state.productId) {
+          const found = productsRef.current.find((p) => p.id === state.productId) || null;
+          setDetailProduct(found);
+        } else {
+          setDetailProduct(null);
+        }
+
+        if (state.overlay !== 'checkout') {
+          setCheckoutState((prev) => ({ ...prev, isOpen: false }));
+        } else {
+          setCheckoutState((prev) => (prev.items.length > 0 ? { ...prev, isOpen: true } : prev));
+        }
+        return;
+      }
+
+      // Fallback when browser pops to an untagged URL state
+      if (readInitialAdminUrlFlag()) {
+        checkAdminSessionAndPrompt({ autoOpenPrompt: true, restorePanelIfValid: true });
+      } else {
+        saveStayInAdminView(false);
+        setIsAdminMode(false);
+        setAdminTab('orders');
+        setAdminSelectedOrderId(null);
+        setDetailProduct(null);
+        setIsCartOpen(false);
+        setIsTrackOpen(false);
+        setIsPasswordModalOpen(false);
+        setCheckoutState((prev) => ({ ...prev, isOpen: false }));
       }
     };
-    window.addEventListener('hashchange', syncHash);
-    return () => window.removeEventListener('hashchange', syncHash);
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, [checkAdminSessionAndPrompt]);
 
   const enterAdminMode = () => {
     setIsAdminAuthenticated(true);
+    isAdminAuthenticatedRef.current = true;
+    saveStayInAdminView(true);
     setIsAdminMode(true);
     setIsPasswordModalOpen(false);
-    if (window.location.hash !== '#admin') {
-      window.history.replaceState(null, '', '#admin');
+    setAdminTab('orders');
+    setAdminSelectedOrderId(null);
+
+    const curState = window.history.state as BantuuHistoryState | null;
+    const adminPayload: Omit<BantuuHistoryState, 'bantuuApp'> = {
+      view: 'admin',
+      overlay: null,
+      productId: null,
+      adminTab: 'orders',
+      adminOrderId: null,
+    };
+
+    if (curState?.overlay === 'admin-password' || window.location.hash === '#admin') {
+      // Replace the password modal entry so 1 Back click goes cleanly to Storefront '/'
+      replaceHistoryEntry(adminPayload, `${getStoreBaseUrl()}#admin`);
+    } else {
+      pushHistoryEntry(adminPayload, `${getStoreBaseUrl()}#admin`);
     }
     window.scrollTo({ top: 0 });
   };
 
-  const exitAdminMode = useCallback(() => {
-    fetch('/api/admin/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);
+  // Navigate back to Storefront WITHOUT logging out admin session
+  const handleBackToStorefront = useCallback(() => {
+    saveStayInAdminView(false);
     setIsAdminMode(false);
-    setIsAdminAuthenticated(false);
+    setAdminTab('orders');
+    setAdminSelectedOrderId(null);
     setIsPasswordModalOpen(false);
-    if (window.location.hash === '#admin') {
-      window.history.replaceState(null, '', window.location.pathname === '/admin' ? '/' : '#');
-    }
+    replaceHistoryEntry(
+      {
+        view: 'store',
+        overlay: null,
+        productId: null,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
     loadStore(true);
     window.scrollTo({ top: 0 });
-  }, [loadStore]);
+  }, [loadStore, replaceHistoryEntry]);
+
+  // Explicit Logout: clears server session cookie & client auth completely
+  const handleLogoutAdmin = useCallback(() => {
+    fetch('/api/admin/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);
+    saveStayInAdminView(false);
+    setIsAdminMode(false);
+    setIsAdminAuthenticated(false);
+    isAdminAuthenticatedRef.current = false;
+    setIsPasswordModalOpen(false);
+    setAdminTab('orders');
+    setAdminSelectedOrderId(null);
+    replaceHistoryEntry(
+      {
+        view: 'store',
+        overlay: null,
+        productId: null,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
+    loadStore(true);
+    window.scrollTo({ top: 0 });
+  }, [loadStore, replaceHistoryEntry]);
 
   const handleAdminSessionExpired = useCallback(() => {
     setIsAdminAuthenticated(false);
+    isAdminAuthenticatedRef.current = false;
+    saveStayInAdminView(false);
     setIsPasswordModalOpen(true);
   }, []);
+
+  const handleAdminTabChange = useCallback(
+    (nextTab: AdminTab) => {
+      if (nextTab === adminTab && !adminSelectedOrderId) return;
+      setAdminSelectedOrderId(null);
+      setAdminTab(nextTab);
+      pushHistoryEntry(
+        {
+          view: 'admin',
+          overlay: null,
+          productId: null,
+          adminTab: nextTab,
+          adminOrderId: null,
+        },
+        `${getStoreBaseUrl()}#admin`,
+      );
+      window.scrollTo({ top: 0 });
+    },
+    [adminSelectedOrderId, adminTab, pushHistoryEntry],
+  );
+
+  const handleAdminOrderSelection = useCallback(
+    (nextOrderId: string | null) => {
+      if (nextOrderId) {
+        setAdminSelectedOrderId(nextOrderId);
+        pushHistoryEntry(
+          {
+            view: 'admin',
+            overlay: null,
+            productId: null,
+            adminTab,
+            adminOrderId: nextOrderId,
+          },
+          `${getStoreBaseUrl()}#admin`,
+        );
+      } else {
+        const curState = window.history.state as BantuuHistoryState | null;
+        if (curState?.bantuuApp && curState.adminOrderId) {
+          window.history.back();
+        } else {
+          setAdminSelectedOrderId(null);
+        }
+      }
+    },
+    [adminTab, pushHistoryEntry],
+  );
 
   const handleCategoriesUpdated = useCallback(
     (nextCategories: string[], nextProducts?: Product[]) => {
@@ -246,7 +562,10 @@ export default function App() {
         const data = await res.json();
         if (data?.triggered) {
           setSearchQuery('');
-          await checkAdminSessionAndPrompt();
+          await checkAdminSessionAndPrompt({
+            autoOpenPrompt: true,
+            restorePanelIfValid: true,
+          });
         }
       }
     } catch {
@@ -279,6 +598,114 @@ export default function App() {
     () => calculateCartTotals(cart, settings.freeShippingThreshold, settings.shippingFee),
     [cart, settings.freeShippingThreshold, settings.shippingFee],
   );
+
+  const openDetailModal = (product: Product) => {
+    setDetailProduct(product);
+    pushHistoryEntry(
+      {
+        view: 'store',
+        overlay: 'detail',
+        productId: product.id,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
+  };
+
+  const closeDetailModal = () => {
+    const curState = window.history.state as BantuuHistoryState | null;
+    if (curState?.bantuuApp && curState.overlay === 'detail') {
+      window.history.back();
+    } else {
+      setDetailProduct(null);
+    }
+  };
+
+  const openCartDrawer = () => {
+    setIsCartOpen(true);
+    pushHistoryEntry(
+      {
+        view: 'store',
+        overlay: 'cart',
+        productId: null,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
+  };
+
+  const closeCartDrawer = () => {
+    const curState = window.history.state as BantuuHistoryState | null;
+    if (curState?.bantuuApp && curState.overlay === 'cart') {
+      window.history.back();
+    } else {
+      setIsCartOpen(false);
+    }
+  };
+
+  const openTrackModal = () => {
+    setIsTrackOpen(true);
+    pushHistoryEntry(
+      {
+        view: 'store',
+        overlay: 'track',
+        productId: null,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
+  };
+
+  const closeTrackModal = () => {
+    const curState = window.history.state as BantuuHistoryState | null;
+    if (curState?.bantuuApp && curState.overlay === 'track') {
+      window.history.back();
+    } else {
+      setIsTrackOpen(false);
+    }
+  };
+
+  const closeCheckoutModal = () => {
+    if (checkoutCompletedRef.current) {
+      checkoutCompletedRef.current = false;
+      setCheckoutState((prev) => ({ ...prev, isOpen: false }));
+      setIsCartOpen(false);
+      setDetailProduct(null);
+      replaceHistoryEntry(
+        {
+          view: 'store',
+          overlay: null,
+          productId: null,
+          adminTab: 'orders',
+          adminOrderId: null,
+        },
+        getStoreBaseUrl(),
+      );
+      return;
+    }
+
+    const curState = window.history.state as BantuuHistoryState | null;
+    if (curState?.bantuuApp && curState.overlay === 'checkout') {
+      window.history.back();
+    } else {
+      setCheckoutState((prev) => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const closePasswordModal = () => {
+    const curState = window.history.state as BantuuHistoryState | null;
+    if (curState?.bantuuApp && curState.overlay === 'admin-password') {
+      window.history.back();
+      return;
+    }
+    setIsPasswordModalOpen(false);
+    if (isAdminMode && !isAdminAuthenticated) {
+      handleBackToStorefront();
+    }
+  };
 
   const handleAddToCart = (product: Product, quantity = 1) => {
     if (product.stock <= 0) return;
@@ -314,6 +741,7 @@ export default function App() {
 
   const handleBuyNow = (product: Product, quantity = 1) => {
     if (product.stock <= 0) return;
+    checkoutCompletedRef.current = false;
     setDetailProduct(null);
     setIsCartOpen(false);
     setCheckoutState({
@@ -331,12 +759,23 @@ export default function App() {
       modeLabel: 'Express Buy Now',
       clearCartOnSuccess: false,
     });
+    pushHistoryEntry(
+      {
+        view: 'store',
+        overlay: 'checkout',
+        productId: product.id,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
   };
 
   const handleCartCheckout = () => {
     const authoritativeItems = sanitizeCartWithCatalog(cart, products);
     setCart(authoritativeItems);
     if (authoritativeItems.length === 0) return;
+    checkoutCompletedRef.current = false;
     setIsCartOpen(false);
     setCheckoutState({
       isOpen: true,
@@ -344,6 +783,16 @@ export default function App() {
       modeLabel: 'Bag Checkout',
       clearCartOnSuccess: true,
     });
+    pushHistoryEntry(
+      {
+        view: 'store',
+        overlay: 'checkout',
+        productId: null,
+        adminTab: 'orders',
+        adminOrderId: null,
+      },
+      getStoreBaseUrl(),
+    );
   };
 
   const handleUpdateCartQuantity = (productId: string, nextQty: number) => {
@@ -361,6 +810,7 @@ export default function App() {
   };
 
   const handleOrderCreated = (order: Order) => {
+    checkoutCompletedRef.current = true;
     setCustomerOrders((prev) => [
       order,
       ...prev.filter((o) => o.orderNumber !== order.orderNumber),
@@ -375,13 +825,29 @@ export default function App() {
     setCustomerOrders(orders);
   }, []);
 
+  if (checkingAdminSession && isAdminMode && !isAdminAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0F1D32] text-[#F7F5EE] flex flex-col items-center justify-center gap-4">
+        <BantuuLogo variant="dark" size="md" />
+        <p className="text-xs font-mono tracking-wider uppercase text-[#C6A45C]">
+          Restoring Admin Session...
+        </p>
+      </div>
+    );
+  }
+
   if (isAdminMode && isAdminAuthenticated) {
     return (
       <AdminPanel
         products={products}
         categories={storeCategories}
         settings={settings}
-        onExitAdmin={exitAdminMode}
+        activeTab={adminTab}
+        onTabChange={handleAdminTabChange}
+        selectedOrderId={adminSelectedOrderId}
+        onSelectedOrderIdChange={handleAdminOrderSelection}
+        onBackToStorefront={handleBackToStorefront}
+        onLogoutAdmin={handleLogoutAdmin}
         onSessionExpired={handleAdminSessionExpired}
         onProductsChanged={setProducts}
         onCategoriesChanged={handleCategoriesUpdated}
@@ -427,7 +893,7 @@ export default function App() {
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={() => setIsTrackOpen(true)}
+              onClick={openTrackModal}
               aria-label={`View your orders (${customerOrders.length})`}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs sm:text-sm font-medium hover:border-[#C6A45C] hover:text-[#C6A45C] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
@@ -442,7 +908,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setIsCartOpen(true)}
+              onClick={openCartDrawer}
               aria-label={`Open shopping bag with ${cartTotals.itemCount} items`}
               className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs sm:text-sm font-semibold hover:bg-[#B69249] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
@@ -582,7 +1048,7 @@ export default function App() {
                   >
                     <button
                       type="button"
-                      onClick={() => setDetailProduct(product)}
+                      onClick={() => openDetailModal(product)}
                       aria-label={`Inspect ${product.name} photos and details`}
                       className="relative aspect-square sm:aspect-[4/3] w-full bg-[#ECE7DA] overflow-hidden text-left cursor-pointer"
                     >
@@ -621,7 +1087,7 @@ export default function App() {
                         <div className="mt-1 sm:mt-1.5 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-3">
                           <button
                             type="button"
-                            onClick={() => setDetailProduct(product)}
+                            onClick={() => openDetailModal(product)}
                             className="text-left text-xs sm:text-base font-semibold text-[#0F1D32] hover:underline underline-offset-2 line-clamp-2 sm:line-clamp-1 leading-snug cursor-pointer"
                           >
                             {product.name}
@@ -724,7 +1190,7 @@ export default function App() {
           <div className="flex items-center gap-5">
             <button
               type="button"
-              onClick={() => setIsTrackOpen(true)}
+              onClick={openTrackModal}
               className="hover:text-[#C6A45C] cursor-pointer"
             >
               Track Order
@@ -739,7 +1205,7 @@ export default function App() {
       {/* Modals & Drawers */}
       <ProductDetailModal
         product={detailProduct}
-        onClose={() => setDetailProduct(null)}
+        onClose={closeDetailModal}
         onAddToCart={handleAddToCart}
         onBuyNow={handleBuyNow}
       />
@@ -748,7 +1214,7 @@ export default function App() {
         isOpen={isCartOpen}
         items={cart}
         settings={settings}
-        onClose={() => setIsCartOpen(false)}
+        onClose={closeCartDrawer}
         onUpdateQuantity={handleUpdateCartQuantity}
         onRemoveItem={(productId) =>
           setCart((prev) => prev.filter((item) => item.productId !== productId))
@@ -761,7 +1227,7 @@ export default function App() {
         items={checkoutState.items}
         modeLabel={checkoutState.modeLabel}
         settings={settings}
-        onClose={() => setCheckoutState((prev) => ({ ...prev, isOpen: false }))}
+        onClose={closeCheckoutModal}
         onOrderCreated={handleOrderCreated}
       />
 
@@ -769,17 +1235,12 @@ export default function App() {
         isOpen={isTrackOpen}
         customerOrders={customerOrders}
         onSyncedOrders={handleSyncedCustomerOrders}
-        onClose={() => setIsTrackOpen(false)}
+        onClose={closeTrackModal}
       />
 
       <AdminPasswordModal
         isOpen={isPasswordModalOpen}
-        onClose={() => {
-          setIsPasswordModalOpen(false);
-          if (isAdminMode && !isAdminAuthenticated) {
-            exitAdminMode();
-          }
-        }}
+        onClose={closePasswordModal}
         onSuccess={enterAdminMode}
       />
     </div>

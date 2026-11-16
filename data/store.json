@@ -8,7 +8,7 @@
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
     "upiQrUrl": "/assets/aistudio/47084_f56d5f0a.jpg"
   },
-  "nextOrderSeq": 1006,
+  "nextOrderSeq": 1007,
   "products": [
     {
       "category": "Cold drinks",
@@ -164,7 +164,7 @@
       "paymentMethod": "UPI",
       "pincode": "302006",
       "shippingFee": 0,
-      "status": "Pending",
+      "status": "Cancelled",
       "subtotal": 1899,
       "total": 1899,
       "upiTransactionId": "UTR419283746500"
@@ -189,7 +189,7 @@
       "paymentMethod": "COD",
       "pincode": "560025",
       "shippingFee": 0,
-      "status": "Pending",
+      "status": "Cancelled",
       "subtotal": 1899,
       "total": 1899
     },
@@ -213,7 +213,7 @@
       "paymentMethod": "UPI",
       "pincode": "400050",
       "shippingFee": 0,
-      "status": "Confirmed",
+      "status": "Cancelled",
       "subtotal": 4299,
       "total": 4299,
       "upiCustomerId": "priya.nair@okicici",
@@ -246,7 +246,7 @@
       "paymentMethod": "COD",
       "pincode": "110024",
       "shippingFee": 0,
-      "status": "Pending",
+      "status": "Cancelled",
       "subtotal": 4398,
       "total": 4398
     }

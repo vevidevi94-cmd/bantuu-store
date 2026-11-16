@@ -7,6 +7,7 @@ import {
   Film,
   Image as ImageIcon,
   Layers,
+  LogOut,
   Package,
   Pencil,
   Plus,
@@ -33,7 +34,7 @@ import {
 import { BantuuLogo } from './BantuuLogo';
 import { MediaRenderer } from './MediaRenderer';
 
-type AdminTab = 'orders' | 'products' | 'categories' | 'add-product' | 'settings';
+export type AdminTab = 'orders' | 'products' | 'categories' | 'add-product' | 'settings';
 
 interface RtdbStateInfo {
   connected: boolean;
@@ -45,7 +46,12 @@ interface AdminPanelProps {
   products: Product[];
   categories: string[];
   settings: StoreSettings;
-  onExitAdmin: () => void;
+  activeTab: AdminTab;
+  onTabChange: (tab: AdminTab) => void;
+  selectedOrderId: string | null;
+  onSelectedOrderIdChange: (orderId: string | null) => void;
+  onBackToStorefront: () => void;
+  onLogoutAdmin: () => void;
   onSessionExpired?: () => void;
   onProductsChanged: (products: Product[]) => void;
   onCategoriesChanged: (categories: string[], nextProducts?: Product[]) => void;
@@ -157,23 +163,33 @@ export function AdminPanel({
   products,
   categories,
   settings,
-  onExitAdmin,
+  activeTab,
+  onTabChange,
+  selectedOrderId,
+  onSelectedOrderIdChange,
+  onBackToStorefront,
+  onLogoutAdmin,
   onSessionExpired,
   onProductsChanged,
   onCategoriesChanged,
   onSettingsChanged,
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<AdminTab>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState('');
+  const [orderActionMsg, setOrderActionMsg] = useState('');
+  const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [rtdbInfo, setRtdbInfo] = useState<RtdbStateInfo | null>(null);
 
   // Orders filters & selection
   const [orderQuery, setOrderQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [paymentFilter, setPaymentFilter] = useState('All');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const selectedOrder = useMemo(
+    () => (selectedOrderId ? orders.find((o) => o.id === selectedOrderId) ?? null : null),
+    [orders, selectedOrderId],
+  );
 
   // Products filters & delete state
   const [productQuery, setProductQuery] = useState('');
@@ -386,12 +402,45 @@ export function AdminPanel({
       const { data } = await parseApiJson<{ order?: Order; rtdb?: RtdbStateInfo }>(res);
       if (!res.ok || !data?.order) return;
       setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order! : o)));
-      if (selectedOrder?.id === orderId) {
-        setSelectedOrder(data.order);
-      }
       if (data.rtdb) setRtdbInfo(data.rtdb);
     } catch {
       // keep previous status on failure
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string, orderNumber: string) => {
+    setDeletingOrderId(orderId);
+    setOrdersError('');
+    setOrderActionMsg('');
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{
+        deleted?: boolean;
+        rtdb?: RtdbStateInfo;
+        error?: string;
+      }>(res);
+      if (!res.ok) {
+        setOrdersError(data?.error || 'Could not delete order.');
+        return;
+      }
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setConfirmDeleteOrderId(null);
+      if (selectedOrderId === orderId) {
+        onSelectedOrderIdChange(null);
+      }
+      if (data?.rtdb) setRtdbInfo(data.rtdb);
+      setOrderActionMsg(`Order ${orderNumber} deleted.`);
+    } catch {
+      setOrdersError('Network error while deleting order.');
+    } finally {
+      setDeletingOrderId(null);
     }
   };
 
@@ -554,7 +603,7 @@ export function AdminPanel({
       setProdDescription('');
       setProdMedia([]);
       setProdSuccessMsg(`"${data.product.name}" published to Bantuu Store & Firebase RTDB.`);
-      setActiveTab('products');
+      onTabChange('products');
     } catch {
       setProdErrors({ submit: 'Could not reach the server to save product. Please try again.' });
     } finally {
@@ -735,27 +784,38 @@ export function AdminPanel({
       {/* Midnight Navy Brand Sidebar */}
       <aside className="w-full lg:w-64 bg-[#0F1D32] text-[#F7F5EE] border-b lg:border-b-0 lg:border-r border-[#223654] flex flex-col justify-between shrink-0">
         <div>
-          <div className="px-6 py-5 border-b border-[#223654] flex items-center justify-between lg:block">
-            <div>
+          <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#223654] flex items-center justify-between gap-2 lg:block">
+            <div className="min-w-0">
               <BantuuLogo variant="dark" size="sm" />
-              <p className="text-[11px] uppercase tracking-wider text-[#C6A45C] font-medium mt-3">
+              <p className="text-[11px] uppercase tracking-wider text-[#C6A45C] font-medium mt-2 lg:mt-3">
                 Admin Studio
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onExitAdmin}
-              className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Storefront</span>
-            </button>
+            <div className="flex lg:hidden items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onBackToStorefront}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] cursor-pointer whitespace-nowrap"
+              >
+                <ArrowLeft className="w-3 h-3 text-[#C6A45C]" />
+                <span>Storefront</span>
+              </button>
+              <button
+                type="button"
+                onClick={onLogoutAdmin}
+                aria-label="Logout admin session"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border border-[#DC2626]/40 bg-[#2A1924] text-[#FCA5A5] cursor-pointer whitespace-nowrap"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
 
           <nav className="p-3 flex lg:flex-col gap-1 overflow-x-auto" aria-label="Admin sections">
             <button
               type="button"
-              onClick={() => setActiveTab('orders')}
+              onClick={() => onTabChange('orders')}
               className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'orders'
                   ? 'bg-[#C6A45C] text-[#0F1D32]'
@@ -771,7 +831,7 @@ export function AdminPanel({
 
             <button
               type="button"
-              onClick={() => setActiveTab('products')}
+              onClick={() => onTabChange('products')}
               className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'products'
                   ? 'bg-[#C6A45C] text-[#0F1D32]'
@@ -790,7 +850,7 @@ export function AdminPanel({
               onClick={() => {
                 setCategoryError('');
                 setCategorySuccess('');
-                setActiveTab('categories');
+                onTabChange('categories');
               }}
               className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'categories'
@@ -809,7 +869,7 @@ export function AdminPanel({
               type="button"
               onClick={() => {
                 setProdSuccessMsg('');
-                setActiveTab('add-product');
+                onTabChange('add-product');
               }}
               className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'add-product'
@@ -823,7 +883,7 @@ export function AdminPanel({
 
             <button
               type="button"
-              onClick={() => setActiveTab('settings')}
+              onClick={() => onTabChange('settings')}
               className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'settings'
                   ? 'bg-[#C6A45C] text-[#0F1D32]'
@@ -836,20 +896,28 @@ export function AdminPanel({
           </nav>
         </div>
 
-        <div className="hidden lg:block p-4 border-t border-[#223654]">
+        <div className="hidden lg:flex flex-col gap-2 p-4 border-t border-[#223654]">
           <button
             type="button"
-            onClick={onExitAdmin}
+            onClick={onBackToStorefront}
             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[#223654] bg-[#172A46] text-sm font-medium text-[#F7F5EE] hover:bg-[#1F3659] transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 text-[#C6A45C]" />
             <span>Back to Storefront</span>
           </button>
+          <button
+            type="button"
+            onClick={onLogoutAdmin}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-[#DC2626]/40 bg-[#2A1924] text-xs font-medium text-[#FCA5A5] hover:bg-[#3A1F2F] transition-colors cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Logout Admin</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 p-5 sm:p-8 max-w-6xl">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl">
         {/* ORDERS TAB */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
@@ -968,6 +1036,12 @@ export function AdminPanel({
               </div>
             )}
 
+            {orderActionMsg && (
+              <div className="p-4 rounded-xl border border-[#C6A45C]/50 bg-[#F7F5EE] text-sm font-medium text-[#0F1D32]">
+                {orderActionMsg}
+              </div>
+            )}
+
             {/* Orders Table */}
             <div className="bg-white border border-[#DED8C8] rounded-xl overflow-hidden">
               {ordersLoading ? (
@@ -981,14 +1055,14 @@ export function AdminPanel({
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-[#DED8C8] bg-[#F7F5EE] text-[11px] uppercase tracking-wider text-[#5C5852]">
-                        <th className="py-3 px-4 font-medium">Order</th>
-                        <th className="py-3 px-4 font-medium">Date &amp; Time</th>
-                        <th className="py-3 px-4 font-medium">Customer &amp; Address</th>
-                        <th className="py-3 px-4 font-medium">Items</th>
-                        <th className="py-3 px-4 font-medium">Payment</th>
-                        <th className="py-3 px-4 font-medium text-right">Total</th>
-                        <th className="py-3 px-4 font-medium">Status</th>
-                        <th className="py-3 px-4 font-medium text-right">Action</th>
+                        <th className="py-3 px-3 font-medium">Order</th>
+                        <th className="py-3 px-3 font-medium">Date &amp; Time</th>
+                        <th className="py-3 px-3 font-medium">Customer &amp; Address</th>
+                        <th className="py-3 px-3 font-medium">Items</th>
+                        <th className="py-3 px-3 font-medium">Payment</th>
+                        <th className="py-3 px-3 font-medium text-right">Total</th>
+                        <th className="py-3 px-3 font-medium">Status</th>
+                        <th className="py-3 px-3 font-medium text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#DED8C8] text-sm">
@@ -997,14 +1071,14 @@ export function AdminPanel({
                         const itemCount = order.items.reduce((s, i) => s + i.quantity, 0);
                         return (
                           <tr key={order.id} className="hover:bg-[#F7F5EE]/70 transition-colors">
-                            <td className="py-3.5 px-4 font-mono font-semibold text-[#0F1D32] whitespace-nowrap">
+                            <td className="py-3.5 px-3 font-mono font-semibold text-[#0F1D32] whitespace-nowrap">
                               {order.orderNumber}
                             </td>
-                            <td className="py-3.5 px-4 font-mono text-xs text-[#3E4756] whitespace-nowrap tabular-nums">
+                            <td className="py-3.5 px-3 font-mono text-xs text-[#3E4756] whitespace-nowrap tabular-nums">
                               <div className="text-[#0F1D32] font-medium">{dt.date}</div>
                               <div className="text-[#5C5852]">{dt.time}</div>
                             </td>
-                            <td className="py-3.5 px-4 max-w-[280px]">
+                            <td className="py-3.5 px-3 max-w-[220px]">
                               <div className="font-medium text-[#0F1D32]">{order.customerName}</div>
                               <div className="text-xs font-mono text-[#5C5852]">
                                 {order.customerPhone}
@@ -1013,13 +1087,13 @@ export function AdminPanel({
                                 {order.address}, {order.city} — {order.pincode}
                               </div>
                             </td>
-                            <td className="py-3.5 px-4 text-xs text-[#3E4756] max-w-[200px]">
+                            <td className="py-3.5 px-3 text-xs text-[#3E4756] max-w-[160px]">
                               <span className="font-mono font-medium text-[#0F1D32]">
                                 {itemCount} {itemCount === 1 ? 'item' : 'items'}
                               </span>{' '}
                               · {order.items.map((i) => i.name).join(', ')}
                             </td>
-                            <td className="py-3.5 px-4 text-xs">
+                            <td className="py-3.5 px-3 text-xs">
                               <div className="font-medium text-[#0F1D32]">
                                 {order.paymentMethod === 'COD' ? 'Cash on Delivery' : 'UPI'}
                               </div>
@@ -1029,17 +1103,17 @@ export function AdminPanel({
                                 </div>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 text-right font-mono font-semibold text-[#0F1D32] tabular-nums whitespace-nowrap">
+                            <td className="py-3.5 px-3 text-right font-mono font-semibold text-[#0F1D32] tabular-nums whitespace-nowrap">
                               {formatINR(order.total)}
                             </td>
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-3">
                               <select
                                 aria-label={`Order status for ${order.orderNumber}`}
                                 value={order.status}
                                 onChange={(e) =>
                                   handleStatusChange(order.id, e.target.value as OrderStatus)
                                 }
-                                className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-white text-[#0F1D32]"
+                                className="px-2 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-white text-[#0F1D32]"
                               >
                                 {ORDER_STATUSES.map((s) => (
                                   <option key={s} value={s}>
@@ -1048,14 +1122,45 @@ export function AdminPanel({
                                 ))}
                               </select>
                             </td>
-                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedOrder(order)}
-                                className="px-3 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-white text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
-                              >
-                                View Details
-                              </button>
+                            <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => onSelectedOrderIdChange(order.id)}
+                                  className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-white text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
+                                >
+                                  View Details
+                                </button>
+                                {confirmDeleteOrderId === order.id ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={deletingOrderId === order.id}
+                                      onClick={() => handleDeleteOrder(order.id, order.orderNumber)}
+                                      className="px-2 py-1.5 text-xs font-medium rounded-md bg-[#B91C1C] text-white disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {deletingOrderId === order.id ? 'Deleting...' : 'Confirm'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteOrderId(null)}
+                                      className="px-2 py-1.5 text-xs rounded-md border border-[#DED8C8] bg-white text-[#3E4756] cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteOrderId(order.id)}
+                                    aria-label={`Delete order ${order.orderNumber}`}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] text-[#B91C1C] hover:bg-[#FEF2F2] cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Delete</span>
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1084,7 +1189,7 @@ export function AdminPanel({
                 type="button"
                 onClick={() => {
                   setProdSuccessMsg('');
-                  setActiveTab('add-product');
+                  onTabChange('add-product');
                 }}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#C6A45C] text-[#0F1D32] hover:bg-[#B69249] transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
@@ -1632,7 +1737,7 @@ export function AdminPanel({
               <div className="pt-3 border-t border-[#DED8C8] flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('products')}
+                  onClick={() => onTabChange('products')}
                   className="px-4 py-2.5 text-sm font-medium rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] hover:bg-[#F7F5EE] cursor-pointer"
                 >
                   Cancel
@@ -1817,7 +1922,7 @@ export function AdminPanel({
           role="dialog"
           aria-modal="true"
           aria-label={`Details for order ${selectedOrder.orderNumber}`}
-          onClick={() => setSelectedOrder(null)}
+          onClick={() => onSelectedOrderIdChange(null)}
         >
           <div
             className="w-full max-w-lg bg-white h-full border-l border-[#DED8C8] flex flex-col shadow-2xl"
@@ -1834,7 +1939,7 @@ export function AdminPanel({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedOrder(null)}
+                onClick={() => onSelectedOrderIdChange(null)}
                 aria-label="Close order details"
                 className="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] cursor-pointer"
               >
@@ -1923,6 +2028,60 @@ export function AdminPanel({
                   <span>Total</span>
                   <span className="font-mono tabular-nums">{formatINR(selectedOrder.total)}</span>
                 </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-[#DED8C8] bg-[#F7F5EE] flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <label htmlFor="drawer-order-status" className="text-xs font-medium text-[#5C5852]">
+                  Status:
+                </label>
+                <select
+                  id="drawer-order-status"
+                  value={selectedOrder.status}
+                  onChange={(e) =>
+                    handleStatusChange(selectedOrder.id, e.target.value as OrderStatus)
+                  }
+                  className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-white text-[#0F1D32]"
+                >
+                  {ORDER_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {confirmDeleteOrderId === selectedOrder.id ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={deletingOrderId === selectedOrder.id}
+                      onClick={() => handleDeleteOrder(selectedOrder.id, selectedOrder.orderNumber)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-md bg-[#B91C1C] text-white disabled:opacity-50 cursor-pointer"
+                    >
+                      {deletingOrderId === selectedOrder.id ? 'Deleting...' : 'Confirm Delete'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteOrderId(null)}
+                      className="px-3 py-1.5 text-xs rounded-md border border-[#DED8C8] bg-white text-[#3E4756] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteOrderId(selectedOrder.id)}
+                    aria-label={`Delete order ${selectedOrder.orderNumber} from drawer`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-[#DC2626]/40 bg-white text-[#B91C1C] hover:bg-[#FEF2F2] cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Order</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

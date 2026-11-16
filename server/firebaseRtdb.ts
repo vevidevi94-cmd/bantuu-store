@@ -209,6 +209,11 @@ export async function updateOrderStatusInRtdb(
   return res.ok;
 }
 
+export async function deleteOrderFromRtdb(baseUrl: string, orderId: string): Promise<boolean> {
+  const res = await rtdbRequest(baseUrl, `/orders/${orderId}`, 'DELETE');
+  return res.ok;
+}
+
 export async function pushSettingsToRtdb(
   baseUrl: string,
   settings: StoreSettings,
