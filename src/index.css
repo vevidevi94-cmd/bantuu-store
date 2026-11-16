@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --brand-navy: #0F1D32;
+    --brand-navy-elevated: #172A46;
+    --brand-gold: #C6A45C;
+    --brand-gold-hover: #B69249;
+    --brand-ivory: #F7F5EE;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #F7F5EE;
+    color: #0F1D32;
+  }
+
+  h1, h2, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

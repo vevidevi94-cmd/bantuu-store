@@ -1,0 +1,6 @@
+{
+  "name": "Bantu Store",
+  "description": "Curated everyday essentials and lifestyle storefront with Buy Now, Add to Cart, Cash on Delivery, UPI checkout, and integrated Admin Studio for orders, products, photos, and videos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

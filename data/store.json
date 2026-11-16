@@ -1,0 +1,219 @@
+{
+  "settings": {
+    "storeName": "Bantuu Store",
+    "upiId": "skiend@axl",
+    "merchantName": "Bantuu Store Retail",
+    "freeShippingThreshold": 999,
+    "shippingFee": 79,
+    "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
+    "upiQrUrl": "/assets/aistudio/47084_35196505.jpg"
+  },
+  "nextOrderSeq": 1005,
+  "products": [
+    {
+      "category": "Apparel",
+      "createdAt": "2026-11-14T08:20:00.000Z",
+      "description": "Breathable 240gsm washed European flax linen overshirt finished with natural corozo buttons and relaxed tailored shoulders.",
+      "featured": false,
+      "id": "prod-apparel-05",
+      "media": [
+        {
+          "id": "med-5",
+          "name": "Olive Linen Overshirt",
+          "type": "image",
+          "url": "/src/assets/images/product_linen_shirt_1794794599684.jpg"
+        }
+      ],
+      "name": "Heavyweight Olive Linen Overshirt",
+      "price": 1899,
+      "stock": 22
+    },
+    {
+      "category": "Audio",
+      "createdAt": "2026-11-13T10:45:00.000Z",
+      "description": "Active noise-cancelling over-ear headphones with anodized aluminum yokes, memory-foam earcups, and 40-hour battery life.",
+      "featured": true,
+      "id": "prod-audio-04",
+      "media": [
+        {
+          "id": "med-4",
+          "name": "Studio Headphones",
+          "type": "image",
+          "url": "/src/assets/images/product_studio_headphones_1794794599341.jpg"
+        }
+      ],
+      "name": "Studio Obsidian Wireless Headphones",
+      "price": 6999,
+      "stock": 14
+    },
+    {
+      "category": "Watches",
+      "createdAt": "2026-11-12T14:00:00.000Z",
+      "description": "38mm brushed stainless steel case with sapphire crystal, warm ivory dial, and stitched tan calfskin strap.",
+      "featured": true,
+      "id": "prod-watch-03",
+      "media": [
+        {
+          "id": "med-3",
+          "name": "Field Watch Dial",
+          "type": "image",
+          "url": "/src/assets/images/product_brass_watch_1794794599021.jpg"
+        }
+      ],
+      "name": "Field Brushed Steel Watch",
+      "price": 5499,
+      "stock": 9
+    },
+    {
+      "category": "Carry & Leather",
+      "createdAt": "2026-11-11T11:30:00.000Z",
+      "description": "Vegetable-tanned full-grain leather everyday carryall with brass rivets, padded 14-inch laptop sleeve, and top zip closure.",
+      "featured": true,
+      "id": "prod-tote-02",
+      "media": [
+        {
+          "id": "med-2",
+          "name": "Cognac Leather Tote",
+          "type": "image",
+          "url": "/src/assets/images/product_leather_tote_1794794601940.jpg"
+        }
+      ],
+      "name": "Cognac Full-Grain Leather Tote",
+      "price": 4299,
+      "stock": 11
+    },
+    {
+      "category": "Home & Living",
+      "createdAt": "2026-11-10T09:15:00.000Z",
+      "description": "Stoneware-finish precision gooseneck kettle with solid walnut handle and balanced heat retention for slow-pour morning coffee.",
+      "featured": true,
+      "id": "prod-kettle-01",
+      "media": [
+        {
+          "id": "med-1",
+          "name": "Ceramic Kettle Front",
+          "type": "image",
+          "url": "/src/assets/images/product_ceramic_kettle_1794794602619.jpg"
+        }
+      ],
+      "name": "Matte Ceramic Pour-Over Kettle",
+      "price": 2499,
+      "stock": 18
+    }
+  ],
+  "orders": [
+    {
+      "address": "14 Station Road, Civil Lines",
+      "city": "Jaipur",
+      "createdAt": "2026-11-16T09:28:51.642Z",
+      "customerName": "Vikram Test",
+      "customerPhone": "9876501234",
+      "id": "ord-ff00db73",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1004",
+      "paymentMethod": "UPI",
+      "pincode": "302006",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899,
+      "upiTransactionId": "UTR419283746500"
+    },
+    {
+      "address": "42 Residency Road, Ashok Nagar",
+      "city": "Bengaluru",
+      "createdAt": "2026-11-16T02:36:09.852Z",
+      "customerName": "Meera Kapoor",
+      "customerPhone": "9812345678",
+      "id": "ord-9d353eb9",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1003",
+      "paymentMethod": "COD",
+      "pincode": "560025",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
+    {
+      "address": "14 Pali Hill, Bandra West",
+      "city": "Mumbai",
+      "createdAt": "2026-11-15T11:42:00.000Z",
+      "customerName": "Priya Nair",
+      "customerPhone": "9820112233",
+      "id": "ord-seed-1002",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_leather_tote_1794794601940.jpg",
+          "name": "Cognac Full-Grain Leather Tote",
+          "price": 4299,
+          "productId": "prod-tote-02",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1002",
+      "paymentMethod": "UPI",
+      "pincode": "400050",
+      "shippingFee": 0,
+      "status": "Confirmed",
+      "subtotal": 4299,
+      "total": 4299,
+      "upiCustomerId": "priya.nair@okicici",
+      "upiTransactionId": "UTR631928475012"
+    },
+    {
+      "address": "B-28 Defence Colony",
+      "city": "New Delhi",
+      "createdAt": "2026-11-15T06:18:00.000Z",
+      "customerName": "Rohan Malhotra",
+      "customerPhone": "9811445566",
+      "id": "ord-seed-1001",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_ceramic_kettle_1794794602619.jpg",
+          "name": "Matte Ceramic Pour-Over Kettle",
+          "price": 2499,
+          "productId": "prod-kettle-01",
+          "quantity": 1
+        },
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1001",
+      "paymentMethod": "COD",
+      "pincode": "110024",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 4398,
+      "total": 4398
+    }
+  ],
+  "categories": [
+    "Apparel",
+    "Audio",
+    "Watches",
+    "Carry & Leather",
+    "Home & Living"
+  ]
+}
