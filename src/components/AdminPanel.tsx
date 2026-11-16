@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   ArrowLeft,
+  Bell,
+  BellOff,
   Check,
   ClipboardList,
   Database,
@@ -15,6 +17,8 @@ import {
   Settings,
   Trash2,
   Upload,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import {
@@ -34,6 +38,17 @@ import {
 import { BantuuLogo } from './BantuuLogo';
 import { MediaRenderer } from './MediaRenderer';
 import { adminFetch } from '../utils/adminClientAuth';
+import {
+  getAlertPermissionState,
+  isAlertSoundMuted,
+  playIphoneOrderChime,
+  registerNotificationServiceWorker,
+  requestSystemNotificationPermission,
+  setAlertSoundMuted,
+  triggerOrderSystemNotification,
+  unlockAlertAudio,
+  type AlertPermissionState,
+} from '../utils/adminAlerts';
 
 export type AdminTab = 'orders' | 'products' | 'categories' | 'add-product' | 'settings';
 
@@ -183,6 +198,14 @@ export function AdminPanel({
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [rtdbInfo, setRtdbInfo] = useState<RtdbStateInfo | null>(null);
 
+  // Real-time new-order notification & iPhone chime state
+  const knownOrderIdsRef = useRef<Set<string> | null>(null);
+  const [notifPermission, setNotifPermission] = useState<AlertPermissionState>(() =>
+    getAlertPermissionState(),
+  );
+  const [soundMuted, setSoundMuted] = useState<boolean>(() => isAlertSoundMuted());
+  const [incomingOrderToast, setIncomingOrderToast] = useState<Order | null>(null);
+
   // Orders filters & selection
   const [orderQuery, setOrderQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -259,7 +282,26 @@ export function AdminPanel({
         if (!res.ok || !data) {
           throw new Error(data?.error || 'Failed to load orders');
         }
-        setOrders(data.orders || []);
+        const loadedOrders = data.orders || [];
+
+        if (knownOrderIdsRef.current === null) {
+          knownOrderIdsRef.current = new Set(loadedOrders.map((o) => o.id));
+        } else {
+          const newOrders = loadedOrders.filter((o) => !knownOrderIdsRef.current!.has(o.id));
+          loadedOrders.forEach((o) => knownOrderIdsRef.current!.add(o.id));
+          if (newOrders.length > 0) {
+            setIncomingOrderToast(newOrders[0]);
+            if (typeof document !== 'undefined') {
+              document.title = `(${newOrders.length} New Order) Bantuu Admin`;
+            }
+            void playIphoneOrderChime();
+            for (const newOrder of newOrders) {
+              void triggerOrderSystemNotification(newOrder);
+            }
+          }
+        }
+
+        setOrders(loadedOrders);
         if (data.rtdb) setRtdbInfo(data.rtdb);
       } catch (err) {
         if (!silent) {
@@ -314,13 +356,29 @@ export function AdminPanel({
   }, [onProductsChanged, onCategoriesChanged]);
 
   useEffect(() => {
+    void registerNotificationServiceWorker();
+    setNotifPermission(getAlertPermissionState());
+
+    const handleUserGestureUnlock = () => {
+      void unlockAlertAudio();
+    };
+    window.addEventListener('pointerdown', handleUserGestureUnlock, { passive: true });
+    window.addEventListener('keydown', handleUserGestureUnlock, { passive: true });
+
     loadOrders();
     loadAdminSettings();
     const poll = window.setInterval(() => {
       loadOrders(true);
       refreshCatalog();
-    }, 10000);
-    return () => window.clearInterval(poll);
+    }, 5000);
+    return () => {
+      window.removeEventListener('pointerdown', handleUserGestureUnlock);
+      window.removeEventListener('keydown', handleUserGestureUnlock);
+      window.clearInterval(poll);
+      if (typeof document !== 'undefined') {
+        document.title = 'Bantuu Store — E-Commerce Storefront';
+      }
+    };
   }, [loadOrders, loadAdminSettings, refreshCatalog]);
 
   // Real-time Firebase RTDB EventSource subscription (admin-only URL loaded from /api/admin/settings)
@@ -430,6 +488,7 @@ export function AdminPanel({
         return;
       }
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      knownOrderIdsRef.current?.delete(orderId);
       setConfirmDeleteOrderId(null);
       if (selectedOrderId === orderId) {
         onSelectedOrderIdChange(null);
@@ -440,6 +499,86 @@ export function AdminPanel({
       setOrdersError('Network error while deleting order.');
     } finally {
       setDeletingOrderId(null);
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    await unlockAlertAudio();
+    const perm = await requestSystemNotificationPermission();
+    setNotifPermission(perm);
+    if (perm === 'granted') {
+      void playIphoneOrderChime();
+      setOrderActionMsg('Order notification alerts enabled with iPhone notification chime.');
+    } else if (perm === 'denied') {
+      setOrderActionMsg(
+        'Notification permission is blocked in browser/app settings. Enable notifications in App Info to see OS tray alerts.',
+      );
+    }
+  };
+
+  const handleToggleSound = async () => {
+    const nextMuted = !soundMuted;
+    setAlertSoundMuted(nextMuted);
+    setSoundMuted(nextMuted);
+    if (!nextMuted) {
+      await unlockAlertAudio();
+      void playIphoneOrderChime();
+    }
+  };
+
+  const handleTestAlert = async () => {
+    await unlockAlertAudio();
+    let perm = getAlertPermissionState();
+    if (perm === 'default') {
+      perm = await requestSystemNotificationPermission();
+      setNotifPermission(perm);
+    }
+    if (soundMuted) {
+      setAlertSoundMuted(false);
+      setSoundMuted(false);
+    }
+    const played = await playIphoneOrderChime();
+    const previewOrder: Order = {
+      id: `test-${Date.now()}`,
+      orderNumber: 'BNT-TEST',
+      customerName: 'Bantuu Test Customer',
+      customerPhone: '9876543210',
+      address: 'Sample Address',
+      city: 'Jaipur',
+      pincode: '302001',
+      paymentMethod: 'COD',
+      items: [
+        {
+          productId: 'test',
+          name: 'Test Notification Order',
+          price: 499,
+          quantity: 1,
+          imageUrl: '/assets/aistudio/47084_f56d5f0a.jpg',
+        },
+      ],
+      subtotal: 499,
+      shippingFee: 0,
+      total: 499,
+      status: 'Pending',
+      createdAt: new Date().toISOString(),
+    };
+    setIncomingOrderToast(previewOrder);
+    const notified = await triggerOrderSystemNotification(previewOrder);
+    if (notified) {
+      setOrderActionMsg('Test OS notification & iPhone chime sent! Check your notification tray.');
+    } else if (played) {
+      setOrderActionMsg(
+        'Test iPhone chime played! Allow Notification permission in browser/app settings for OS tray alerts.',
+      );
+    } else {
+      setOrderActionMsg('Test order alert banner triggered.');
+    }
+  };
+
+  const dismissIncomingToast = () => {
+    setIncomingOrderToast(null);
+    if (typeof document !== 'undefined') {
+      document.title = 'Bantuu Store — E-Commerce Storefront';
     }
   };
 
@@ -910,6 +1049,55 @@ export function AdminPanel({
 
       {/* Main Content */}
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl">
+        {incomingOrderToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-5 p-4 rounded-xl border border-[#C6A45C] bg-[#0F1D32] text-[#F7F5EE] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          >
+            <div className="flex items-start gap-3">
+              <span className="w-9 h-9 rounded-lg bg-[#C6A45C] text-[#0F1D32] inline-flex items-center justify-center shrink-0">
+                <Bell className="w-4 h-4" />
+              </span>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-[#C6A45C] font-semibold">
+                  New Customer Order Received
+                </p>
+                <p className="text-sm font-semibold mt-0.5">
+                  {incomingOrderToast.orderNumber} · {incomingOrderToast.customerName} ·{' '}
+                  <span className="font-mono text-[#C6A45C]">
+                    {formatINR(incomingOrderToast.total)}
+                  </span>{' '}
+                  ({incomingOrderToast.paymentMethod})
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {!incomingOrderToast.id.startsWith('test-') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onTabChange('orders');
+                    onSelectedOrderIdChange(incomingOrderToast.id);
+                    dismissIncomingToast();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-semibold hover:bg-[#B69249] cursor-pointer"
+                >
+                  Open Order
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={dismissIncomingToast}
+                aria-label="Dismiss new order alert"
+                className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] hover:bg-[#1F3659] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ORDERS TAB */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
@@ -922,13 +1110,61 @@ export function AdminPanel({
                   Customer Orders, Addresses &amp; Timestamps
                 </h1>
               </div>
-              <button
-                type="button"
-                onClick={() => loadOrders()}
-                className="inline-flex items-center justify-center px-4 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white hover:bg-[#ECE7DA] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                Sync Now
-              </button>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleEnableNotifications}
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
+                    notifPermission === 'granted'
+                      ? 'border-[#C6A45C] bg-[#0F1D32] text-[#F7F5EE]'
+                      : 'border-[#0F1D32] bg-[#C6A45C] text-[#0F1D32] hover:bg-[#B69249] font-semibold'
+                  }`}
+                >
+                  {notifPermission === 'denied' ? (
+                    <BellOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Bell className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {notifPermission === 'granted'
+                      ? 'Alerts On'
+                      : notifPermission === 'denied'
+                        ? 'Alerts Blocked'
+                        : 'Enable Alerts'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleSound}
+                  aria-label={soundMuted ? 'Unmute order chime' : 'Mute order chime'}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white hover:bg-[#ECE7DA] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {soundMuted ? (
+                    <VolumeX className="w-3.5 h-3.5 text-[#B91C1C]" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 text-[#8A6D32]" />
+                  )}
+                  <span>{soundMuted ? 'Muted' : 'Sound On'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTestAlert}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white hover:bg-[#ECE7DA] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Bell className="w-3.5 h-3.5 text-[#8A6D32]" />
+                  <span>Test Alert</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => loadOrders()}
+                  className="inline-flex items-center justify-center px-3.5 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white hover:bg-[#ECE7DA] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Sync Now
+                </button>
+              </div>
             </div>
 
             {rtdbInfo?.lastError && (

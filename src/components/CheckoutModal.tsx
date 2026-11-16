@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Banknote, Check, CheckCircle2, Copy, QrCode, Smartphone, X } from 'lucide-react';
+import {
+  Banknote,
+  Check,
+  CheckCircle2,
+  Copy,
+  Download,
+  Maximize2,
+  QrCode,
+  Share2,
+  Smartphone,
+  X,
+} from 'lucide-react';
 import {
   buildUpiPaymentUri,
   calculateCartTotals,
@@ -98,6 +109,9 @@ export function CheckoutModal({
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [qrLoadError, setQrLoadError] = useState(false);
+  const [savingQr, setSavingQr] = useState(false);
+  const [qrStatusMsg, setQrStatusMsg] = useState('');
+  const [isQrZoomOpen, setIsQrZoomOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -106,16 +120,25 @@ export function CheckoutModal({
     setConfirmedOrder(null);
     setSubmitting(false);
     setQrLoadError(false);
+    setSavingQr(false);
+    setQrStatusMsg('');
+    setIsQrZoomOpen(false);
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (isQrZoomOpen) {
+          setIsQrZoomOpen(false);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, isQrZoomOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -139,6 +162,106 @@ export function CheckoutModal({
     } catch {
       // Clipboard blocked in non-HTTPS contexts; ignore silently
     }
+  };
+
+  const handleSaveQr = async () => {
+    setSavingQr(true);
+    setQrStatusMsg('');
+    const downloadEndpoint = '/api/upi-qr/download';
+    const isWebView =
+      typeof navigator !== 'undefined' &&
+      /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
+
+    try {
+      const win = window as unknown as {
+        Android?: { downloadFile?: (url: string, filename: string) => void };
+      };
+      if (typeof win.Android?.downloadFile === 'function') {
+        win.Android.downloadFile(
+          `${window.location.origin}${downloadEndpoint}`,
+          'bantuu-store-upi-qr.jpg',
+        );
+        setQrStatusMsg('QR download started via app.');
+        return;
+      }
+
+      if (isWebView) {
+        // Android WebView DownloadManager requires a real HTTP attachment URL (blob: URLs fail)
+        const link = document.createElement('a');
+        link.href = downloadEndpoint;
+        link.download = 'bantuu-store-upi-qr.jpg';
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        // Also trigger hidden iframe download for WebViews that only hook DownloadListener on navigations
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = downloadEndpoint;
+        document.body.appendChild(iframe);
+        window.setTimeout(() => iframe.remove(), 4000);
+
+        setQrStatusMsg(
+          'QR download triggered. If your app blocks downloads, tap Share QR or tap QR to take a screenshot.',
+        );
+        return;
+      }
+
+      const res = await fetch(downloadEndpoint);
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = 'bantuu-store-upi-qr.jpg';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 2500);
+      setQrStatusMsg('QR code saved to your Downloads.');
+    } catch {
+      const link = document.createElement('a');
+      link.href = downloadEndpoint;
+      link.download = 'bantuu-store-upi-qr.jpg';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setQrStatusMsg('Tap Share QR or tap the QR image to save / screenshot.');
+    } finally {
+      setSavingQr(false);
+    }
+  };
+
+  const handleShareQr = async () => {
+    setQrStatusMsg('');
+    try {
+      const res = await fetch('/api/upi-qr/download');
+      if (res.ok) {
+        const blob = await res.blob();
+        const file = new File([blob], 'bantuu-store-upi-qr.jpg', {
+          type: blob.type || 'image/jpeg',
+        });
+        if (
+          typeof navigator !== 'undefined' &&
+          typeof navigator.share === 'function' &&
+          (!navigator.canShare || navigator.canShare({ files: [file] }))
+        ) {
+          await navigator.share({
+            title: `${settings.storeName} UPI QR`,
+            text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+            files: [file],
+          });
+          setQrStatusMsg('QR shared — select your UPI app or Gallery.');
+          return;
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+    }
+    setIsQrZoomOpen(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -500,8 +623,11 @@ export function CheckoutModal({
                           return <DeterministicUpiQr seed={upiUri} />;
                         }
                         return (
-                          <div
-                            className={`w-44 h-44 sm:w-48 sm:h-48 rounded-xl overflow-hidden border border-[#DED8C8] shrink-0 ${
+                          <button
+                            type="button"
+                            onClick={() => setIsQrZoomOpen(true)}
+                            aria-label="Enlarge UPI QR code"
+                            className={`relative group w-44 h-44 sm:w-48 sm:h-48 rounded-xl overflow-hidden border border-[#DED8C8] shrink-0 cursor-pointer ${
                               isLegacyFullScreen ? 'bg-white' : 'bg-black'
                             }`}
                           >
@@ -515,7 +641,11 @@ export function CheckoutModal({
                                   : 'w-full h-full object-contain p-1'
                               }
                             />
-                          </div>
+                            <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0F1D32]/90 text-[#F7F5EE] text-[10px] font-medium">
+                              <Maximize2 className="w-3 h-3 text-[#C6A45C]" />
+                              <span>Zoom</span>
+                            </span>
+                          </button>
                         );
                       })()}
                       <div className="space-y-2.5 flex-1 min-w-0">
@@ -547,14 +677,27 @@ export function CheckoutModal({
                               </>
                             )}
                           </button>
-                          <a
-                            href={settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
-                            download="bantuu-store-upi-qr.jpg"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA]"
+                          <button
+                            type="button"
+                            onClick={handleSaveQr}
+                            disabled={savingQr}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#0F1D32] bg-[#0F1D32] text-xs font-medium text-[#F7F5EE] hover:bg-[#172A46] disabled:opacity-60 cursor-pointer"
                           >
-                            Save QR
-                          </a>
+                            <Download className="w-3.5 h-3.5 text-[#C6A45C]" />
+                            <span>{savingQr ? 'Saving...' : 'Save QR'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleShareQr}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
+                            <span>Share QR</span>
+                          </button>
                         </div>
+                        {qrStatusMsg && (
+                          <p className="text-[11px] font-medium text-[#8A6D32]">{qrStatusMsg}</p>
+                        )}
                         <p className="text-xs text-[#5C5852]">
                           Payable Amount:{' '}
                           <span className="font-mono font-semibold text-[#0F1D32]">
@@ -562,7 +705,7 @@ export function CheckoutModal({
                           </span>
                         </p>
                         <p className="text-[11px] text-[#5C5852] leading-relaxed">
-                          Scan this QR in PhonePe, GPay, Paytm or BHIM (or tap <strong>Save QR</strong> &amp; upload from gallery), pay {formatINR(totals.total)}, then enter your 12-digit UTR number below.
+                          Tap <strong>Save QR</strong> or <strong>Share QR</strong> (or tap the QR to zoom &amp; screenshot), pay {formatINR(totals.total)}, then enter your 12-digit UTR number below.
                         </p>
                       </div>
                     </div>
@@ -668,6 +811,67 @@ export function CheckoutModal({
           </form>
         )}
       </div>
+
+      {isQrZoomOpen && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full Screen UPI QR Code"
+          onClick={() => setIsQrZoomOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-[#0F1D32] border border-[#223654] rounded-2xl p-5 text-center space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between text-[#F7F5EE]">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#C6A45C]">
+                Bantuu Store UPI QR
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsQrZoomOpen(false)}
+                aria-label="Close zoomed QR"
+                className="w-8 h-8 inline-flex items-center justify-center rounded-lg bg-[#172A46] text-[#F7F5EE] hover:bg-[#1F3659] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="bg-black rounded-xl overflow-hidden border border-[#223654] p-2">
+              <img
+                src={settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
+                alt={`Full screen UPI QR for ${settings.upiId}`}
+                className="w-full h-auto max-h-[60vh] object-contain mx-auto"
+              />
+            </div>
+            <p className="text-xs text-[#CBD3DF]">
+              Amount: <span className="font-mono font-semibold text-[#F7F5EE]">{formatINR(totals.total)}</span> · UPI:{' '}
+              <span className="font-mono font-semibold text-[#C6A45C]">{settings.upiId}</span>
+            </p>
+            <p className="text-[11px] text-[#94A3B8]">
+              Take a screenshot or tap Save / Share QR to upload in PhonePe, GPay, or Paytm.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveQr}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-semibold cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Save QR</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleShareQr}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs font-medium cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5 text-[#C6A45C]" />
+                <span>Share QR</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

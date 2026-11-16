@@ -27,6 +27,7 @@ import {
   type StoreSettings,
 } from './utils/storeLogic';
 import { adminFetch, clearAdminSessionToken } from './utils/adminClientAuth';
+import { registerNotificationServiceWorker } from './utils/adminAlerts';
 
 const CART_STORAGE_KEY = 'bantuu_store_cart_v1';
 const ORDERS_STORAGE_KEY = 'bantuu_customer_orders_v1';
@@ -224,6 +225,7 @@ export default function App() {
 
   useEffect(() => {
     loadStore();
+    void registerNotificationServiceWorker();
   }, [loadStore]);
 
   // Verify existing server-side admin cookie or Bearer session when visiting #admin, reloading, or triggering bantuustore

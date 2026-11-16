@@ -8,7 +8,7 @@
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
     "upiQrUrl": "/assets/aistudio/47084_f56d5f0a.jpg"
   },
-  "nextOrderSeq": 1007,
+  "nextOrderSeq": 1008,
   "products": [
     {
       "category": "Cold drinks",
@@ -29,7 +29,7 @@
       "stock": 0
     },
     {
-      "category": "Apparel",
+      "category": "Audio",
       "createdAt": "2026-11-14T08:20:00.000Z",
       "description": "Breathable 240gsm washed European flax linen overshirt finished with natural corozo buttons and relaxed tailored shoulders.",
       "featured": false,
@@ -192,71 +192,14 @@
       "status": "Cancelled",
       "subtotal": 1899,
       "total": 1899
-    },
-    {
-      "address": "14 Pali Hill, Bandra West",
-      "city": "Mumbai",
-      "createdAt": "2026-11-15T11:42:00.000Z",
-      "customerName": "Priya Nair",
-      "customerPhone": "9820112233",
-      "id": "ord-seed-1002",
-      "items": [
-        {
-          "imageUrl": "/src/assets/images/product_leather_tote_1794794601940.jpg",
-          "name": "Cognac Full-Grain Leather Tote",
-          "price": 4299,
-          "productId": "prod-tote-02",
-          "quantity": 1
-        }
-      ],
-      "orderNumber": "BNT-1002",
-      "paymentMethod": "UPI",
-      "pincode": "400050",
-      "shippingFee": 0,
-      "status": "Cancelled",
-      "subtotal": 4299,
-      "total": 4299,
-      "upiCustomerId": "priya.nair@okicici",
-      "upiTransactionId": "UTR631928475012"
-    },
-    {
-      "address": "B-28 Defence Colony",
-      "city": "New Delhi",
-      "createdAt": "2026-11-15T06:18:00.000Z",
-      "customerName": "Rohan Malhotra",
-      "customerPhone": "9811445566",
-      "id": "ord-seed-1001",
-      "items": [
-        {
-          "imageUrl": "/src/assets/images/product_ceramic_kettle_1794794602619.jpg",
-          "name": "Matte Ceramic Pour-Over Kettle",
-          "price": 2499,
-          "productId": "prod-kettle-01",
-          "quantity": 1
-        },
-        {
-          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
-          "name": "Heavyweight Olive Linen Overshirt",
-          "price": 1899,
-          "productId": "prod-apparel-05",
-          "quantity": 1
-        }
-      ],
-      "orderNumber": "BNT-1001",
-      "paymentMethod": "COD",
-      "pincode": "110024",
-      "shippingFee": 0,
-      "status": "Cancelled",
-      "subtotal": 4398,
-      "total": 4398
     }
   ],
   "categories": [
-    "Apparel",
     "Audio",
     "Watches",
     "Carry & Leather",
     "Home & Living",
-    "Cold drinks"
+    "Cold drinks",
+    "Accessories"
   ]
 }

@@ -197,6 +197,103 @@ export function createApiApp(): Express {
     });
   });
 
+  app.get('/api/upi-qr/download', async (req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const db = getStoreSnapshot();
+      const qrUrl = (db.settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg').trim();
+
+      if (qrUrl.startsWith('data:image/')) {
+        const match = qrUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+        if (match) {
+          const mime = match[1];
+          const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+          const buffer = Buffer.from(match[2], 'base64');
+          res.setHeader('Content-Type', mime);
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="bantuu-store-upi-qr.${ext}"`,
+          );
+          res.setHeader('Cache-Control', 'no-store');
+          res.send(buffer);
+          return;
+        }
+      }
+
+      if (qrUrl.startsWith('/')) {
+        const cleanRel = qrUrl.replace(/^\/+/, '');
+        const candidates = [
+          path.resolve(process.cwd(), 'public', cleanRel),
+          path.resolve(process.cwd(), 'dist', cleanRel),
+          path.resolve(uploadsDir, path.basename(cleanRel)),
+        ];
+        const allowedRoots = [
+          path.resolve(process.cwd(), 'public'),
+          path.resolve(process.cwd(), 'dist'),
+          path.resolve(uploadsDir),
+        ];
+
+        for (const candidate of candidates) {
+          const isInsideAllowed = allowedRoots.some((root) =>
+            candidate.startsWith(root + path.sep),
+          );
+          if (isInsideAllowed && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            const ext = path.extname(candidate).toLowerCase();
+            const mime =
+              ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+            const outExt = ext === '.png' ? 'png' : ext === '.webp' ? 'webp' : 'jpg';
+            res.setHeader('Content-Type', mime);
+            res.setHeader(
+              'Content-Disposition',
+              `attachment; filename="bantuu-store-upi-qr.${outExt}"`,
+            );
+            res.setHeader('Cache-Control', 'no-store');
+            res.send(fs.readFileSync(candidate));
+            return;
+          }
+        }
+
+        const host = req.get('host');
+        if (host) {
+          const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+          const originRes = await fetch(`${proto}://${host}${qrUrl}`);
+          if (originRes.ok) {
+            const mime = originRes.headers.get('content-type') || 'image/jpeg';
+            const arrayBuf = await originRes.arrayBuffer();
+            res.setHeader('Content-Type', mime);
+            res.setHeader(
+              'Content-Disposition',
+              'attachment; filename="bantuu-store-upi-qr.jpg"',
+            );
+            res.setHeader('Cache-Control', 'no-store');
+            res.send(Buffer.from(arrayBuf));
+            return;
+          }
+        }
+      }
+
+      if (/^https?:\/\//i.test(qrUrl)) {
+        const upstream = await fetch(qrUrl);
+        if (upstream.ok) {
+          const mime = upstream.headers.get('content-type') || 'image/jpeg';
+          const arrayBuf = await upstream.arrayBuffer();
+          res.setHeader('Content-Type', mime);
+          res.setHeader(
+            'Content-Disposition',
+            'attachment; filename="bantuu-store-upi-qr.jpg"',
+          );
+          res.setHeader('Cache-Control', 'no-store');
+          res.send(Buffer.from(arrayBuf));
+          return;
+        }
+      }
+
+      res.status(404).json({ error: 'QR image not found.' });
+    } catch {
+      res.status(500).json({ error: 'Could not prepare QR download.' });
+    }
+  });
+
   app.get('/api/products', async (_req, res) => {
     await syncWithRtdbOnBootOrRefresh().catch(() => undefined);
     const db = getStoreSnapshot();
