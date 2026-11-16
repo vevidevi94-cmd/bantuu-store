@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Banknote, Check, CheckCircle2, Copy, ExternalLink, QrCode, Smartphone, X } from 'lucide-react';
+import { Banknote, Check, CheckCircle2, Copy, QrCode, Smartphone, X } from 'lucide-react';
 import {
-  buildPhonePePaymentUri,
   buildUpiPaymentUri,
   calculateCartTotals,
   formatINR,
@@ -126,12 +125,6 @@ export function CheckoutModal({
     settings.shippingFee,
   );
   const upiUri = buildUpiPaymentUri(
-    settings.upiId,
-    settings.merchantName,
-    totals.total,
-    `${settings.storeName} Order`,
-  );
-  const phonePeUri = buildPhonePePaymentUri(
     settings.upiId,
     settings.merchantName,
     totals.total,
@@ -564,34 +557,10 @@ export function CheckoutModal({
                             {formatINR(totals.total)}
                           </span>
                         </p>
+                        <p className="text-[11px] text-[#5C5852] leading-relaxed">
+                          Scan this QR in PhonePe, GPay, Paytm or BHIM (or tap <strong>Save QR</strong> &amp; upload from gallery), pay {formatINR(totals.total)}, then enter your 12-digit UTR number below.
+                        </p>
                       </div>
-                    </div>
-
-                    {/* Direct PhonePe & UPI App Deep Links (no payment gateway required) */}
-                    <div className="pt-3 border-t border-[#DED8C8] space-y-2">
-                      <p className="text-xs font-semibold text-[#0F1D32]">
-                        Direct App Payment (Opens installed app directly — no payment gateway):
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-2.5">
-                        <a
-                          href={phonePeUri}
-                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#5F259F] text-white text-xs sm:text-sm font-semibold hover:bg-[#4D1D82] transition-colors whitespace-nowrap"
-                        >
-                          <Smartphone className="w-4 h-4 shrink-0" />
-                          <span>Pay {formatINR(totals.total)} via PhonePe</span>
-                          <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-90" />
-                        </a>
-                        <a
-                          href={upiUri}
-                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-[#0F1D32] bg-white text-[#0F1D32] text-xs font-semibold hover:bg-[#ECE7DA] transition-colors whitespace-nowrap"
-                        >
-                          <span>Other UPI App (GPay / Paytm)</span>
-                          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                        </a>
-                      </div>
-                      <p className="text-[11px] text-[#5C5852]">
-                        After completing payment in PhonePe or your UPI app, enter the 12-digit UTR / Transaction ID below.
-                      </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#DED8C8]">
