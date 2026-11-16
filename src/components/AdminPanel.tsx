@@ -45,6 +45,7 @@ import {
   registerNotificationServiceWorker,
   requestSystemNotificationPermission,
   setAlertSoundMuted,
+  syncOneSignalAdminRole,
   triggerOrderSystemNotification,
   unlockAlertAudio,
   type AlertPermissionState,
@@ -357,6 +358,7 @@ export function AdminPanel({
 
   useEffect(() => {
     void registerNotificationServiceWorker();
+    syncOneSignalAdminRole(true);
     setNotifPermission(getAlertPermissionState());
 
     const handleUserGestureUnlock = () => {

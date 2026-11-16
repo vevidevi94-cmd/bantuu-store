@@ -118,13 +118,70 @@ export async function playIphoneOrderChime(): Promise<boolean> {
   }
 }
 
+interface OneSignalSdkLike {
+  Notifications?: {
+    permission?: boolean;
+    requestPermission?: () => Promise<void>;
+  };
+  User?: {
+    addTag?: (key: string, value: string) => void;
+    removeTag?: (key: string) => void;
+  };
+}
+
+declare global {
+  interface Window {
+    OneSignal?: OneSignalSdkLike;
+    OneSignalDeferred?: Array<(OneSignal: OneSignalSdkLike) => void | Promise<void>>;
+  }
+}
+
+export function syncOneSignalAdminRole(isAdmin: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const queue = window.OneSignalDeferred;
+    if (Array.isArray(queue)) {
+      queue.push((OneSignal) => {
+        try {
+          if (isAdmin) {
+            OneSignal?.User?.addTag?.('role', 'admin');
+          } else {
+            OneSignal?.User?.removeTag?.('role');
+          }
+        } catch {
+          // ignore OneSignal tag failures on restricted origins
+        }
+      });
+    } else if (window.OneSignal?.User) {
+      if (isAdmin) {
+        window.OneSignal.User.addTag?.('role', 'admin');
+      } else {
+        window.OneSignal.User.removeTag?.('role');
+      }
+    }
+  } catch {
+    // ignore OneSignal errors
+  }
+}
+
 export function registerNotificationServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return Promise.resolve(null);
   }
   if (!swRegistrationPromise) {
     swRegistrationPromise = navigator.serviceWorker
-      .register('/sw.js')
+      .getRegistration('/')
+      .then(async (existing) => {
+        // Keep OneSignalSDKWorker.js intact at '/' when already registered
+        if (existing) return existing;
+        if (window.OneSignal || Array.isArray(window.OneSignalDeferred)) {
+          // Give OneSignal SDK a moment to register OneSignalSDKWorker.js before falling back to /sw.js
+          await new Promise((r) => window.setTimeout(r, 1500));
+          const afterWait = await navigator.serviceWorker.getRegistration('/');
+          if (afterWait) return afterWait;
+        }
+        return navigator.serviceWorker.register('/sw.js');
+      })
       .catch(() => null);
   }
   return swRegistrationPromise;
@@ -145,9 +202,27 @@ export async function requestSystemNotificationPermission(): Promise<AlertPermis
   if (typeof window === 'undefined' || typeof Notification === 'undefined') {
     return 'unsupported';
   }
-  if (Notification.permission === 'granted') return 'granted';
+  if (Notification.permission === 'granted') {
+    syncOneSignalAdminRole(true);
+    return 'granted';
+  }
   try {
-    return await Notification.requestPermission();
+    if (typeof window.OneSignal?.Notifications?.requestPermission === 'function') {
+      await window.OneSignal.Notifications.requestPermission();
+      syncOneSignalAdminRole(true);
+      if ((Notification.permission as string) === 'granted') {
+        return 'granted';
+      }
+    }
+  } catch {
+    // fall back to standard Web Notification permission prompt
+  }
+  try {
+    const result = await Notification.requestPermission();
+    if (result === 'granted') {
+      syncOneSignalAdminRole(true);
+    }
+    return result;
   } catch {
     return Notification.permission;
   }

@@ -27,10 +27,46 @@ import {
   updateStoreSettingsRecord,
 } from './storeDb.js';
 import {
+  formatINR,
   validateCheckoutForm,
   validateProductForm,
+  type Order,
   type OrderStatus,
 } from '../src/utils/storeLogic.js';
+
+async function sendOneSignalOrderPush(order: Order): Promise<void> {
+  const restApiKey = process.env.ONESIGNAL_REST_API_KEY?.trim();
+  const appId = (process.env.ONESIGNAL_APP_ID || 'be25993a-1942-43eb-8482-3ee141f80a28').trim();
+  if (!restApiKey || !appId) return;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const itemSummary = order.items.map((i) => `${i.name} ×${i.quantity}`).join(', ');
+    await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Key ${restApiKey}`,
+      },
+      body: JSON.stringify({
+        app_id: appId,
+        target_channel: 'push',
+        filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }],
+        headings: { en: `New Order ${order.orderNumber} — ${formatINR(order.total)}` },
+        contents: {
+          en: `${order.customerName} (${order.paymentMethod}) · ${order.city}\n${itemSummary}`,
+        },
+        url: '/#admin',
+      }),
+    });
+  } catch {
+    // non-fatal if OneSignal push fails or times out
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export function createApiApp(): Express {
   const app = express();
@@ -416,6 +452,8 @@ export function createApiApp(): Express {
       res.status(400).json({ error: result.error || 'Could not place order.' });
       return;
     }
+
+    await sendOneSignalOrderPush(result.order);
 
     res.status(201).json({ order: result.order, rtdb: getRtdbSyncState() });
   });

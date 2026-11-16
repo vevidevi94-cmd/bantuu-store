@@ -8,7 +8,7 @@
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
     "upiQrUrl": "/assets/aistudio/47084_f56d5f0a.jpg"
   },
-  "nextOrderSeq": 1008,
+  "nextOrderSeq": 1017,
   "products": [
     {
       "category": "Cold drinks",
@@ -44,7 +44,7 @@
       ],
       "name": "Heavyweight Olive Linen Overshirt",
       "price": 1899,
-      "stock": 22
+      "stock": 18
     },
     {
       "category": "Audio",
@@ -62,7 +62,7 @@
       ],
       "name": "Studio Obsidian Wireless Headphones",
       "price": 6999,
-      "stock": 14
+      "stock": 13
     },
     {
       "category": "Watches",
@@ -80,7 +80,7 @@
       ],
       "name": "Field Brushed Steel Watch",
       "price": 5499,
-      "stock": 9
+      "stock": 5
     },
     {
       "category": "Carry & Leather",
@@ -98,7 +98,7 @@
       ],
       "name": "Cognac Full-Grain Leather Tote",
       "price": 4299,
-      "stock": 11
+      "stock": 9
     },
     {
       "category": "Home & Living",
@@ -120,6 +120,246 @@
     }
   ],
   "orders": [
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:24:43.453Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-86d69dc5",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_brass_watch_1794794599021.jpg",
+          "name": "Field Brushed Steel Watch",
+          "price": 5499,
+          "productId": "prod-watch-03",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1016",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 5499,
+      "total": 5499
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:24:26.750Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-514f7d9b",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_brass_watch_1794794599021.jpg",
+          "name": "Field Brushed Steel Watch",
+          "price": 5499,
+          "productId": "prod-watch-03",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1015",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 5499,
+      "total": 5499
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:24:00.796Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-9949ad25",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_brass_watch_1794794599021.jpg",
+          "name": "Field Brushed Steel Watch",
+          "price": 5499,
+          "productId": "prod-watch-03",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1014",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 5499,
+      "total": 5499
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:23:35.998Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-8df49196",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_brass_watch_1794794599021.jpg",
+          "name": "Field Brushed Steel Watch",
+          "price": 5499,
+          "productId": "prod-watch-03",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1013",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 5499,
+      "total": 5499
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:14:13.120Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-3ba2885e",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_studio_headphones_1794794599341.jpg",
+          "name": "Studio Obsidian Wireless Headphones",
+          "price": 6999,
+          "productId": "prod-audio-04",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1012",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 6999,
+      "total": 6999
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:13:59.970Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-8f750343",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1011",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:13:43.064Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-e3c5f47e",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1010",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T14:03:13.896Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-0967f8d7",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_leather_tote_1794794601940.jpg",
+          "name": "Cognac Full-Grain Leather Tote",
+          "price": 4299,
+          "productId": "prod-tote-02",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1009",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 4299,
+      "total": 4299
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T14:02:55.798Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-76e6a47f",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_leather_tote_1794794601940.jpg",
+          "name": "Cognac Full-Grain Leather Tote",
+          "price": 4299,
+          "productId": "prod-tote-02",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1008",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 4299,
+      "total": 4299
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T14:02:40.270Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-b1bf372a",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1007",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
     {
       "address": "Sathojsjsjsks",
       "city": "Bihar",

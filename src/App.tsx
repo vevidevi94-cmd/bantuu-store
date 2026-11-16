@@ -27,7 +27,7 @@ import {
   type StoreSettings,
 } from './utils/storeLogic';
 import { adminFetch, clearAdminSessionToken } from './utils/adminClientAuth';
-import { registerNotificationServiceWorker } from './utils/adminAlerts';
+import { registerNotificationServiceWorker, syncOneSignalAdminRole } from './utils/adminAlerts';
 
 const CART_STORAGE_KEY = 'bantuu_store_cart_v1';
 const ORDERS_STORAGE_KEY = 'bantuu_customer_orders_v1';
@@ -474,6 +474,7 @@ export default function App() {
 
   // Explicit Logout: clears server session cookie, Bearer token & client auth completely
   const handleLogoutAdmin = useCallback(() => {
+    syncOneSignalAdminRole(false);
     adminFetch('/api/admin/logout', { method: 'POST' }).catch(() => undefined);
     clearAdminSessionToken();
     saveStayInAdminView(false);
