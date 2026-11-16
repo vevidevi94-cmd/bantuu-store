@@ -122,12 +122,12 @@ export function isRequestAdminAuthenticated(req: Request): boolean {
 }
 
 export function shouldUseSecureCookie(req: Request): boolean {
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-    const proto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
-    if (proto === 'http') return false;
-    return proto === 'https' || Boolean(process.env.VERCEL);
-  }
-  return false;
+  const proto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+  if (proto === 'http') return false;
+  if (proto === 'https' || req.secure) return true;
+  const host = String(req.headers.host || '').toLowerCase();
+  if (host.endsWith('.run.app') || host.endsWith('.vercel.app')) return true;
+  return Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
 }
 
 export function buildAdminSessionCookie(token: string, secure: boolean): string {
@@ -136,7 +136,7 @@ export function buildAdminSessionCookie(token: string, secure: boolean): string 
     `${COOKIE_NAME}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    secure ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${maxAgeSec}`,
   ];
   if (secure) parts.push('Secure');
@@ -148,7 +148,7 @@ export function buildClearAdminCookie(secure: boolean): string {
     `${COOKIE_NAME}=`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    secure ? 'SameSite=None' : 'SameSite=Lax',
     'Max-Age=0',
   ];
   if (secure) parts.push('Secure');

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Lock, X } from 'lucide-react';
+import { setAdminSessionToken } from '../utils/adminClientAuth';
 
 interface AdminPasswordModalProps {
   isOpen: boolean;
@@ -45,9 +46,9 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
         body: JSON.stringify({ passcode }),
       });
       const text = await res.text();
-      let data: { authenticated?: boolean; error?: string } = {};
+      let data: { authenticated?: boolean; token?: string; error?: string } = {};
       try {
-        data = text ? (JSON.parse(text) as { authenticated?: boolean; error?: string }) : {};
+        data = text ? (JSON.parse(text) as { authenticated?: boolean; token?: string; error?: string }) : {};
       } catch {
         data = {};
       }
@@ -57,6 +58,7 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
         return;
       }
 
+      setAdminSessionToken(data.token);
       setPasscode('');
       onSuccess();
     } catch {

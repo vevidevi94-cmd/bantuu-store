@@ -33,6 +33,7 @@ import {
 } from '../utils/storeLogic';
 import { BantuuLogo } from './BantuuLogo';
 import { MediaRenderer } from './MediaRenderer';
+import { adminFetch } from '../utils/adminClientAuth';
 
 export type AdminTab = 'orders' | 'products' | 'categories' | 'add-product' | 'settings';
 
@@ -247,7 +248,7 @@ export function AdminPanel({
       if (!silent) setOrdersLoading(true);
       if (!silent) setOrdersError('');
       try {
-        const res = await fetch('/api/orders', { credentials: 'include' });
+        const res = await adminFetch('/api/orders');
         if (res.status === 401) {
           handleUnauthorized();
           return;
@@ -275,7 +276,7 @@ export function AdminPanel({
 
   const loadAdminSettings = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/settings', { credentials: 'include' });
+      const res = await adminFetch('/api/admin/settings');
       if (res.status === 401) {
         handleUnauthorized();
         return;
@@ -296,7 +297,7 @@ export function AdminPanel({
 
   const refreshCatalog = useCallback(async () => {
     try {
-      const res = await fetch('/api/store', { credentials: 'include' });
+      const res = await adminFetch('/api/store');
       if (!res.ok) return;
       const { data } = await parseApiJson<{
         products?: Product[];
@@ -389,10 +390,9 @@ export function AdminPanel({
 
   const handleStatusChange = async (orderId: string, nextStatus: OrderStatus) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/status`, {
+      const res = await adminFetch(`/api/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ status: nextStatus }),
       });
       if (res.status === 401) {
@@ -413,9 +413,8 @@ export function AdminPanel({
     setOrdersError('');
     setOrderActionMsg('');
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
+      const res = await adminFetch(`/api/orders/${orderId}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       if (res.status === 401) {
         handleUnauthorized();
@@ -447,9 +446,8 @@ export function AdminPanel({
   const handleDeleteProduct = async (productId: string, productName: string) => {
     setDeletingId(productId);
     try {
-      const res = await fetch(`/api/products/${productId}`, {
+      const res = await adminFetch(`/api/products/${productId}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       if (res.status === 401) {
         handleUnauthorized();
@@ -475,10 +473,9 @@ export function AdminPanel({
       const uploadedItems: ProductMedia[] = [];
       for (const file of Array.from(files)) {
         const prepared = await prepareMediaPayload(file);
-        const res = await fetch('/api/upload', {
+        const res = await adminFetch('/api/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify(prepared),
         });
         if (res.status === 401) {
@@ -562,10 +559,9 @@ export function AdminPanel({
     setProdErrors({});
     setProdSaving(true);
     try {
-      const res = await fetch('/api/products', {
+      const res = await adminFetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: prodName,
           category: prodCategory,
@@ -623,10 +619,9 @@ export function AdminPanel({
 
     setCategoryBusy(true);
     try {
-      const res = await fetch('/api/categories', {
+      const res = await adminFetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name: newCategoryName }),
       });
       if (res.status === 401) {
@@ -665,10 +660,9 @@ export function AdminPanel({
 
     setCategoryBusy(true);
     try {
-      const res = await fetch('/api/categories', {
+      const res = await adminFetch('/api/categories', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ oldName, newName: editingCategoryDraft }),
       });
       if (res.status === 401) {
@@ -703,10 +697,9 @@ export function AdminPanel({
     setCategorySuccess('');
     setCategoryBusy(true);
     try {
-      const res = await fetch(`/api/categories?name=${encodeURIComponent(name)}`, {
+      const res = await adminFetch(`/api/categories?name=${encodeURIComponent(name)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name }),
       });
       if (res.status === 401) {
@@ -740,10 +733,9 @@ export function AdminPanel({
     setSettingsSaved(false);
     setSettingsError('');
     try {
-      const res = await fetch('/api/settings', {
+      const res = await adminFetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           storeName: setStoreName,
           upiId: setUpiId,
@@ -1051,8 +1043,110 @@ export function AdminPanel({
                   No orders match the current filter.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                <>
+                  {/* Mobile Order Cards (< md): Status, View Details & Delete always visible without horizontal scroll */}
+                  <div className="md:hidden divide-y divide-[#DED8C8]">
+                    {filteredOrders.map((order) => {
+                      const dt = formatOrderDateTime(order.createdAt);
+                      const itemCount = order.items.reduce((s, i) => s + i.quantity, 0);
+                      return (
+                        <div key={order.id} className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="font-mono font-semibold text-sm text-[#0F1D32]">
+                                {order.orderNumber}
+                              </span>
+                              <p className="text-[11px] font-mono text-[#5C5852] mt-0.5">
+                                {dt.date} · {dt.time}
+                              </p>
+                            </div>
+                            <span className="font-mono font-semibold text-sm text-[#0F1D32] tabular-nums">
+                              {formatINR(order.total)}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-[#3E4756] space-y-0.5">
+                            <p className="font-medium text-[#0F1D32]">
+                              {order.customerName} · <span className="font-mono">{order.customerPhone}</span>
+                            </p>
+                            <p className="leading-snug">
+                              {order.address}, {order.city} — {order.pincode}
+                            </p>
+                            <p className="pt-1">
+                              <span className="font-mono font-medium text-[#0F1D32]">
+                                {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                              </span>{' '}
+                              · {order.items.map((i) => i.name).join(', ')}
+                            </p>
+                            <p>
+                              {order.paymentMethod === 'COD' ? 'Cash on Delivery' : 'UPI'}
+                              {order.upiTransactionId ? ` · UTR: ${order.upiTransactionId}` : ''}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#DED8C8]/70">
+                            <select
+                              aria-label={`Mobile order status for ${order.orderNumber}`}
+                              value={order.status}
+                              onChange={(e) =>
+                                handleStatusChange(order.id, e.target.value as OrderStatus)
+                              }
+                              className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-[#F7F5EE] text-[#0F1D32]"
+                            >
+                              {ORDER_STATUSES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onSelectedOrderIdChange(order.id)}
+                                className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] bg-white text-[#0F1D32]"
+                              >
+                                View Details
+                              </button>
+                              {confirmDeleteOrderId === order.id ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={deletingOrderId === order.id}
+                                    onClick={() => handleDeleteOrder(order.id, order.orderNumber)}
+                                    className="px-2.5 py-1.5 text-xs font-medium rounded-md bg-[#B91C1C] text-white disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {deletingOrderId === order.id ? 'Deleting...' : 'Confirm'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteOrderId(null)}
+                                    className="px-2 py-1.5 text-xs rounded-md border border-[#DED8C8] bg-white text-[#3E4756]"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteOrderId(order.id)}
+                                  aria-label={`Delete order ${order.orderNumber} mobile`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-[#DED8C8] text-[#B91C1C] hover:bg-[#FEF2F2]"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Orders Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-[#DED8C8] bg-[#F7F5EE] text-[11px] uppercase tracking-wider text-[#5C5852]">
                         <th className="py-3 px-3 font-medium">Order</th>
@@ -1167,7 +1261,8 @@ export function AdminPanel({
                       })}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                </>
               )}
             </div>
           </div>

@@ -26,6 +26,7 @@ import {
   type Product,
   type StoreSettings,
 } from './utils/storeLogic';
+import { adminFetch, clearAdminSessionToken } from './utils/adminClientAuth';
 
 const CART_STORAGE_KEY = 'bantuu_store_cart_v1';
 const ORDERS_STORAGE_KEY = 'bantuu_customer_orders_v1';
@@ -175,10 +176,14 @@ export default function App() {
   const pushHistoryEntry = useCallback(
     (next: Omit<BantuuHistoryState, 'bantuuApp'>, url?: string) => {
       if (typeof window === 'undefined') return;
-      const payload: BantuuHistoryState = { bantuuApp: true, ...next };
-      const targetUrl =
-        url ?? (next.view === 'admin' ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl());
-      window.history.pushState(payload, '', targetUrl);
+      try {
+        const payload: BantuuHistoryState = { bantuuApp: true, ...next };
+        const targetUrl =
+          url ?? (next.view === 'admin' ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl());
+        window.history.pushState(payload, '', targetUrl);
+      } catch {
+        // ignore restricted history API errors
+      }
     },
     [],
   );
@@ -186,10 +191,14 @@ export default function App() {
   const replaceHistoryEntry = useCallback(
     (next: Omit<BantuuHistoryState, 'bantuuApp'>, url?: string) => {
       if (typeof window === 'undefined') return;
-      const payload: BantuuHistoryState = { bantuuApp: true, ...next };
-      const targetUrl =
-        url ?? (next.view === 'admin' ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl());
-      window.history.replaceState(payload, '', targetUrl);
+      try {
+        const payload: BantuuHistoryState = { bantuuApp: true, ...next };
+        const targetUrl =
+          url ?? (next.view === 'admin' ? `${getStoreBaseUrl()}#admin` : getStoreBaseUrl());
+        window.history.replaceState(payload, '', targetUrl);
+      } catch {
+        // ignore restricted history API errors
+      }
     },
     [],
   );
@@ -217,13 +226,13 @@ export default function App() {
     loadStore();
   }, [loadStore]);
 
-  // Verify existing server-side admin cookie session when visiting #admin, reloading, or triggering bantuustore
+  // Verify existing server-side admin cookie or Bearer session when visiting #admin, reloading, or triggering bantuustore
   const checkAdminSessionAndPrompt = useCallback(
     async (options?: { autoOpenPrompt?: boolean; restorePanelIfValid?: boolean }) => {
       const autoOpenPrompt = options?.autoOpenPrompt ?? true;
       const restorePanelIfValid = options?.restorePanelIfValid ?? true;
       try {
-        const res = await fetch('/api/admin/session', { credentials: 'include' });
+        const res = await adminFetch('/api/admin/session');
         const data = await res.json();
         if (res.ok && data?.authenticated) {
           setIsAdminAuthenticated(true);
@@ -255,6 +264,7 @@ export default function App() {
         // fall through to unauthenticated handling
       }
 
+      clearAdminSessionToken();
       setIsAdminAuthenticated(false);
       isAdminAuthenticatedRef.current = false;
       saveStayInAdminView(false);
@@ -460,9 +470,10 @@ export default function App() {
     window.scrollTo({ top: 0 });
   }, [loadStore, replaceHistoryEntry]);
 
-  // Explicit Logout: clears server session cookie & client auth completely
+  // Explicit Logout: clears server session cookie, Bearer token & client auth completely
   const handleLogoutAdmin = useCallback(() => {
-    fetch('/api/admin/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);
+    adminFetch('/api/admin/logout', { method: 'POST' }).catch(() => undefined);
+    clearAdminSessionToken();
     saveStayInAdminView(false);
     setIsAdminMode(false);
     setIsAdminAuthenticated(false);
@@ -485,6 +496,7 @@ export default function App() {
   }, [loadStore, replaceHistoryEntry]);
 
   const handleAdminSessionExpired = useCallback(() => {
+    clearAdminSessionToken();
     setIsAdminAuthenticated(false);
     isAdminAuthenticatedRef.current = false;
     saveStayInAdminView(false);

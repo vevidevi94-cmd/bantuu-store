@@ -64,7 +64,7 @@ export function createApiApp(): Express {
     }
     const token = createAdminSessionToken();
     res.setHeader('Set-Cookie', buildAdminSessionCookie(token, shouldUseSecureCookie(req)));
-    res.json({ authenticated: true });
+    res.json({ authenticated: true, token });
   });
 
   app.get('/api/admin/session', (req, res) => {
