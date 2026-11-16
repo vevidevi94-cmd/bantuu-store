@@ -27,7 +27,9 @@ export interface StoreDatabase {
   nextOrderSeq: number;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'bantuu-store-data')
+  : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 const DEFAULT_RTDB_URL = 'https://bantuu-store-default-rtdb.firebaseio.com';
 const DEFAULT_UPI_ID = 'skiend@axl';
