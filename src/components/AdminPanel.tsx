@@ -45,7 +45,6 @@ import {
   registerNotificationServiceWorker,
   requestSystemNotificationPermission,
   setAlertSoundMuted,
-  syncOneSignalAdminRole,
   triggerOrderSystemNotification,
   unlockAlertAudio,
   type AlertPermissionState,
@@ -358,14 +357,21 @@ export function AdminPanel({
 
   useEffect(() => {
     void registerNotificationServiceWorker();
-    syncOneSignalAdminRole(true);
     setNotifPermission(getAlertPermissionState());
 
     const handleUserGestureUnlock = () => {
       void unlockAlertAudio();
     };
+    const handleVisibilityOrFocus = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        void loadOrders(true);
+        void refreshCatalog();
+      }
+    };
     window.addEventListener('pointerdown', handleUserGestureUnlock, { passive: true });
     window.addEventListener('keydown', handleUserGestureUnlock, { passive: true });
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
     loadOrders();
     loadAdminSettings();
@@ -376,6 +382,8 @@ export function AdminPanel({
     return () => {
       window.removeEventListener('pointerdown', handleUserGestureUnlock);
       window.removeEventListener('keydown', handleUserGestureUnlock);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.clearInterval(poll);
       if (typeof document !== 'undefined') {
         document.title = 'Bantuu Store — E-Commerce Storefront';

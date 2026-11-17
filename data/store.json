@@ -8,7 +8,7 @@
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
     "upiQrUrl": "/assets/aistudio/47084_f56d5f0a.jpg"
   },
-  "nextOrderSeq": 1017,
+  "nextOrderSeq": 1020,
   "products": [
     {
       "category": "Cold drinks",
@@ -44,7 +44,7 @@
       ],
       "name": "Heavyweight Olive Linen Overshirt",
       "price": 1899,
-      "stock": 18
+      "stock": 15
     },
     {
       "category": "Audio",
@@ -120,6 +120,78 @@
     }
   ],
   "orders": [
+    {
+      "address": "Sathinsnsjsj",
+      "city": "Bihar",
+      "createdAt": "2026-11-16T16:00:25.071Z",
+      "customerName": "Banti Mahto",
+      "customerPhone": "7667531859",
+      "id": "ord-9e3d61d3",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1019",
+      "paymentMethod": "COD",
+      "pincode": "806525",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:58:03.910Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-86855ee6",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1018",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
+    {
+      "address": "sathopur",
+      "city": "biharshrih",
+      "createdAt": "2026-11-16T15:57:45.745Z",
+      "customerName": "doraemon doraemon",
+      "customerPhone": "3625362514",
+      "id": "ord-e955389f",
+      "items": [
+        {
+          "imageUrl": "/src/assets/images/product_linen_shirt_1794794599684.jpg",
+          "name": "Heavyweight Olive Linen Overshirt",
+          "price": 1899,
+          "productId": "prod-apparel-05",
+          "quantity": 1
+        }
+      ],
+      "orderNumber": "BNT-1017",
+      "paymentMethod": "COD",
+      "pincode": "803216",
+      "shippingFee": 0,
+      "status": "Pending",
+      "subtotal": 1899,
+      "total": 1899
+    },
     {
       "address": "sathopur",
       "city": "biharshrih",

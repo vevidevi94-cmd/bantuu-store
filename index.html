@@ -15,26 +15,15 @@
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0F1D32" />
+    <link rel="icon" type="image/png" href="/bantuu-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        try {
-          await OneSignal.init({
-            appId: "be25993a-1942-43eb-8482-3ee141f80a28",
-            allowLocalhostAsSecureOrigin: true,
-          });
-        } catch (err) {
-          console.warn("OneSignal init skipped:", err);
-        }
-      });
-    </script>
   </head>
   <body class="bg-[#F7F5EE] text-[#0F1D32] antialiased selection:bg-[#C6A45C] selection:text-[#0F1D32]">
     <div id="root"></div>

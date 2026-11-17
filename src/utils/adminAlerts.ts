@@ -118,70 +118,13 @@ export async function playIphoneOrderChime(): Promise<boolean> {
   }
 }
 
-interface OneSignalSdkLike {
-  Notifications?: {
-    permission?: boolean;
-    requestPermission?: () => Promise<void>;
-  };
-  User?: {
-    addTag?: (key: string, value: string) => void;
-    removeTag?: (key: string) => void;
-  };
-}
-
-declare global {
-  interface Window {
-    OneSignal?: OneSignalSdkLike;
-    OneSignalDeferred?: Array<(OneSignal: OneSignalSdkLike) => void | Promise<void>>;
-  }
-}
-
-export function syncOneSignalAdminRole(isAdmin: boolean): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const queue = window.OneSignalDeferred;
-    if (Array.isArray(queue)) {
-      queue.push((OneSignal) => {
-        try {
-          if (isAdmin) {
-            OneSignal?.User?.addTag?.('role', 'admin');
-          } else {
-            OneSignal?.User?.removeTag?.('role');
-          }
-        } catch {
-          // ignore OneSignal tag failures on restricted origins
-        }
-      });
-    } else if (window.OneSignal?.User) {
-      if (isAdmin) {
-        window.OneSignal.User.addTag?.('role', 'admin');
-      } else {
-        window.OneSignal.User.removeTag?.('role');
-      }
-    }
-  } catch {
-    // ignore OneSignal errors
-  }
-}
-
 export function registerNotificationServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return Promise.resolve(null);
   }
   if (!swRegistrationPromise) {
     swRegistrationPromise = navigator.serviceWorker
-      .getRegistration('/')
-      .then(async (existing) => {
-        // Keep OneSignalSDKWorker.js intact at '/' when already registered
-        if (existing) return existing;
-        if (window.OneSignal || Array.isArray(window.OneSignalDeferred)) {
-          // Give OneSignal SDK a moment to register OneSignalSDKWorker.js before falling back to /sw.js
-          await new Promise((r) => window.setTimeout(r, 1500));
-          const afterWait = await navigator.serviceWorker.getRegistration('/');
-          if (afterWait) return afterWait;
-        }
-        return navigator.serviceWorker.register('/sw.js');
-      })
+      .register('/sw.js')
       .catch(() => null);
   }
   return swRegistrationPromise;
@@ -203,26 +146,10 @@ export async function requestSystemNotificationPermission(): Promise<AlertPermis
     return 'unsupported';
   }
   if (Notification.permission === 'granted') {
-    syncOneSignalAdminRole(true);
     return 'granted';
   }
   try {
-    if (typeof window.OneSignal?.Notifications?.requestPermission === 'function') {
-      await window.OneSignal.Notifications.requestPermission();
-      syncOneSignalAdminRole(true);
-      if ((Notification.permission as string) === 'granted') {
-        return 'granted';
-      }
-    }
-  } catch {
-    // fall back to standard Web Notification permission prompt
-  }
-  try {
-    const result = await Notification.requestPermission();
-    if (result === 'granted') {
-      syncOneSignalAdminRole(true);
-    }
-    return result;
+    return await Notification.requestPermission();
   } catch {
     return Notification.permission;
   }
@@ -235,26 +162,32 @@ export async function triggerOrderSystemNotification(order: Order): Promise<bool
 
   try {
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      navigator.vibrate([200, 90, 260]);
+      navigator.vibrate([220, 100, 220, 100, 300]);
     }
   } catch {
     // ignore vibrate failures
   }
 
-  // Optional native Android WebView JS bridge support if present in APK wrapper
+  // Optional native Android WebView / wrapper JS bridge support
   try {
     const win = window as unknown as {
       Android?: { showNotification?: (t: string, b: string) => void };
+      AndroidInterface?: { showNotification?: (t: string, b: string) => void };
+      WebAppInterface?: { showNotification?: (t: string, b: string) => void };
       ReactNativeWebView?: { postMessage?: (msg: string) => void };
+      flutter_inappwebview?: { callHandler?: (name: string, payload: unknown) => void };
     };
-    if (typeof win.Android?.showNotification === 'function') {
-      win.Android.showNotification(title, body);
-    }
-    if (typeof win.ReactNativeWebView?.postMessage === 'function') {
-      win.ReactNativeWebView.postMessage(
-        JSON.stringify({ type: 'NEW_ORDER', orderNumber: order.orderNumber, title, body }),
-      );
-    }
+    win.Android?.showNotification?.(title, body);
+    win.AndroidInterface?.showNotification?.(title, body);
+    win.WebAppInterface?.showNotification?.(title, body);
+    win.ReactNativeWebView?.postMessage?.(
+      JSON.stringify({ type: 'NEW_ORDER', orderNumber: order.orderNumber, title, body }),
+    );
+    win.flutter_inappwebview?.callHandler?.('newOrderNotification', {
+      orderNumber: order.orderNumber,
+      title,
+      body,
+    });
   } catch {
     // ignore optional bridge errors
   }
@@ -270,10 +203,12 @@ export async function triggerOrderSystemNotification(order: Order): Promise<bool
     body,
     tag: `bantuu-order-${order.id}`,
     renotify: true,
-    icon: '/assets/aistudio/47084_f56d5f0a.jpg',
-    badge: '/assets/aistudio/47084_f56d5f0a.jpg',
-    vibrate: [200, 90, 260],
+    silent: false,
+    icon: '/bantuu-icon.png',
+    badge: '/bantuu-icon.png',
+    vibrate: [220, 100, 220, 100, 300],
     requireInteraction: true,
+    actions: [{ action: 'view', title: 'Open Admin Orders' }],
     data: { url: '/#admin', orderId: order.id },
   };
 
@@ -288,7 +223,8 @@ export async function triggerOrderSystemNotification(order: Order): Promise<bool
   }
 
   try {
-    new Notification(title, options);
+    const { actions: _omitActions, ...basicOptions } = options;
+    new Notification(title, basicOptions);
     return true;
   } catch {
     return false;

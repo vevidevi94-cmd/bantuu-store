@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Lock, X } from 'lucide-react';
 import { setAdminSessionToken } from '../utils/adminClientAuth';
-import { registerNotificationServiceWorker, unlockAlertAudio } from '../utils/adminAlerts';
+import {
+  getAlertPermissionState,
+  registerNotificationServiceWorker,
+  requestSystemNotificationPermission,
+  unlockAlertAudio,
+} from '../utils/adminAlerts';
 
 interface AdminPasswordModalProps {
   isOpen: boolean;
@@ -41,6 +46,9 @@ export function AdminPasswordModal({ isOpen, onClose, onSuccess }: AdminPassword
     setSubmitting(true);
     void unlockAlertAudio();
     void registerNotificationServiceWorker();
+    if (getAlertPermissionState() === 'default') {
+      void requestSystemNotificationPermission();
+    }
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
