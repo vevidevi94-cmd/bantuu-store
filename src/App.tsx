@@ -1269,8 +1269,9 @@ export default function App() {
           <div className="flex flex-col gap-2.5 shrink-0 items-end">
             <a
               href="https://github.com/banti194raj-svg/bantuustore/raw/refs/heads/main/bantuustore.apk"
-              download="bantuustore.apk"
-              rel="noopener noreferrer"
+              target="_blank"
+              rel="external"
+              aria-label="Download Bantuu Store APK"
               className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-[11px] sm:text-xs font-bold hover:bg-[#B69249] transition-colors whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5 shrink-0" />
@@ -1279,7 +1280,7 @@ export default function App() {
             <a
               href="https://t.me/Iamkillerb"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="external"
               aria-label="Contact or Support on Telegram"
               className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-[11px] sm:text-xs font-semibold hover:bg-[#1F3659] hover:border-[#C6A45C]/50 transition-colors whitespace-nowrap"
             >

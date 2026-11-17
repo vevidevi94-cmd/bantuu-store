@@ -122,6 +122,27 @@ export function CheckoutModal({
     settings.shippingFee,
   );
   const safePayableAmount = Math.max(1, Math.round(totals.total));
+  const qrDownloadEndpoint = `/api/upi-qr/download?amount=${safePayableAmount}`;
+  const qrShareEndpoint = `/api/upi-qr/share?amount=${safePayableAmount}`;
+  const androidBridge =
+    typeof window !== 'undefined'
+      ? (window as unknown as {
+          Android?: {
+            downloadFile?: (url: string, filename: string) => void;
+            shareFile?: (url: string, text: string) => void;
+          };
+        }).Android
+      : undefined;
+  const hasAndroidDownloadBridge = typeof androidBridge?.downloadFile === 'function';
+  const hasAndroidShareBridge = typeof androidBridge?.shareFile === 'function';
+  const isAndroidWebView =
+    typeof navigator !== 'undefined' &&
+    /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
+  const canUseWebShareApi =
+    hasAndroidShareBridge ||
+    (typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      !isAndroidWebView);
   const upiUri = buildUpiPaymentUri(
     settings.upiId,
     settings.merchantName,
@@ -202,11 +223,7 @@ export function CheckoutModal({
   const handleSaveQr = async () => {
     setSavingQr(true);
     setQrStatusMsg('');
-    const downloadEndpoint = `/api/upi-qr/download?amount=${safePayableAmount}`;
     const qrFileName = `bantuu-store-upi-qr-rs${safePayableAmount}.png`;
-    const isWebView =
-      typeof navigator !== 'undefined' &&
-      /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
 
     try {
       const win = window as unknown as {
@@ -214,37 +231,26 @@ export function CheckoutModal({
       };
       if (typeof win.Android?.downloadFile === 'function') {
         win.Android.downloadFile(
-          `${window.location.origin}${downloadEndpoint}`,
+          `${window.location.origin}${qrDownloadEndpoint}`,
           qrFileName,
         );
         setQrStatusMsg('QR download started via app.');
         return;
       }
 
-      if (isWebView) {
-        // Android WebView DownloadManager requires a real HTTP attachment URL (blob: URLs fail)
+      if (isAndroidWebView) {
         const link = document.createElement('a');
-        link.href = downloadEndpoint;
-        link.download = qrFileName;
-        link.rel = 'noopener';
+        link.href = qrDownloadEndpoint;
+        link.target = '_blank';
+        link.rel = 'external';
         document.body.appendChild(link);
         link.click();
         link.remove();
-
-        // Also trigger hidden iframe download for WebViews that only hook DownloadListener on navigations
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = downloadEndpoint;
-        document.body.appendChild(iframe);
-        window.setTimeout(() => iframe.remove(), 4000);
-
-        setQrStatusMsg(
-          'QR download triggered. If your app blocks downloads, tap Share QR or tap QR to take a screenshot.',
-        );
+        setQrStatusMsg('QR download opened in browser / Download Manager.');
         return;
       }
 
-      const res = await fetch(downloadEndpoint);
+      const res = await fetch(qrDownloadEndpoint);
       if (!res.ok) throw new Error('Download failed');
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -258,8 +264,9 @@ export function CheckoutModal({
       setQrStatusMsg(`QR code (${formatINR(totals.total)}) saved to your Downloads.`);
     } catch {
       const link = document.createElement('a');
-      link.href = downloadEndpoint;
-      link.download = qrFileName;
+      link.href = qrDownloadEndpoint;
+      link.target = '_blank';
+      link.rel = 'external';
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -271,28 +278,47 @@ export function CheckoutModal({
 
   const handleShareQr = async () => {
     setQrStatusMsg('');
-    const downloadEndpoint = `/api/upi-qr/download?amount=${safePayableAmount}`;
     const qrFileName = `bantuu-store-upi-qr-rs${safePayableAmount}.png`;
     try {
-      const res = await fetch(downloadEndpoint);
-      if (res.ok) {
-        const blob = await res.blob();
-        const file = new File([blob], qrFileName, {
-          type: blob.type || 'image/png',
-        });
-        if (
-          typeof navigator !== 'undefined' &&
-          typeof navigator.share === 'function' &&
-          (!navigator.canShare || navigator.canShare({ files: [file] }))
-        ) {
-          await navigator.share({
-            title: `${settings.storeName} UPI QR`,
-            text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
-            files: [file],
+      const win = window as unknown as {
+        Android?: {
+          shareFile?: (url: string, text: string) => void;
+          shareText?: (text: string) => void;
+        };
+      };
+      if (typeof win.Android?.shareFile === 'function') {
+        win.Android.shareFile(
+          `${window.location.origin}${qrDownloadEndpoint}`,
+          `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+        );
+        setQrStatusMsg('Sharing QR via app...');
+        return;
+      }
+
+      if (canUseWebShareApi) {
+        const res = await fetch(qrDownloadEndpoint);
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], qrFileName, {
+            type: blob.type || 'image/png',
           });
-          setQrStatusMsg('QR shared — select your UPI app or Gallery.');
-          return;
+          if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: `${settings.storeName} UPI QR`,
+              text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+              files: [file],
+            });
+            setQrStatusMsg('QR shared — select your UPI app or Gallery.');
+            return;
+          }
         }
+        await navigator.share({
+          title: `${settings.storeName} UPI QR`,
+          text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+          url: `${window.location.origin}${qrShareEndpoint}`,
+        });
+        setQrStatusMsg('QR link shared.');
+        return;
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -720,23 +746,53 @@ export function CheckoutModal({
                               </>
                             )}
                           </button>
-                          <button
-                            type="button"
-                            onClick={handleSaveQr}
-                            disabled={savingQr}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#0F1D32] bg-[#0F1D32] text-xs font-medium text-[#F7F5EE] hover:bg-[#172A46] disabled:opacity-60 cursor-pointer"
-                          >
-                            <Download className="w-3.5 h-3.5 text-[#C6A45C]" />
-                            <span>{savingQr ? 'Saving...' : 'Save QR'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleShareQr}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
-                          >
-                            <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
-                            <span>Share QR</span>
-                          </button>
+                          {isAndroidWebView && !hasAndroidDownloadBridge ? (
+                            <a
+                              href={qrDownloadEndpoint}
+                              target="_blank"
+                              rel="external"
+                              onClick={() =>
+                                setQrStatusMsg('Opening QR download in browser / Download Manager.')
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#0F1D32] bg-[#0F1D32] text-xs font-medium text-[#F7F5EE] hover:bg-[#172A46] cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5 text-[#C6A45C]" />
+                              <span>Save QR</span>
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleSaveQr}
+                              disabled={savingQr}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#0F1D32] bg-[#0F1D32] text-xs font-medium text-[#F7F5EE] hover:bg-[#172A46] disabled:opacity-60 cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5 text-[#C6A45C]" />
+                              <span>{savingQr ? 'Saving...' : 'Save QR'}</span>
+                            </button>
+                          )}
+                          {canUseWebShareApi ? (
+                            <button
+                              type="button"
+                              onClick={handleShareQr}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
+                              <span>Share QR</span>
+                            </button>
+                          ) : (
+                            <a
+                              href={qrShareEndpoint}
+                              target="_blank"
+                              rel="external"
+                              onClick={() =>
+                                setQrStatusMsg('Opening QR share screen in browser...')
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
+                              <span>Share QR</span>
+                            </a>
+                          )}
                         </div>
                         {qrStatusMsg && (
                           <p className="text-[11px] font-medium text-[#8A6D32]">{qrStatusMsg}</p>
@@ -894,23 +950,47 @@ export function CheckoutModal({
             <p className="text-[11px] text-[#94A3B8]">
               Take a screenshot or tap Save / Share QR to upload in PhonePe, GPay, or Paytm.
             </p>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveQr}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-semibold cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Save QR</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleShareQr}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs font-medium cursor-pointer"
-              >
-                <Share2 className="w-3.5 h-3.5 text-[#C6A45C]" />
-                <span>Share QR</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {isAndroidWebView && !hasAndroidDownloadBridge ? (
+                <a
+                  href={qrDownloadEndpoint}
+                  target="_blank"
+                  rel="external"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-semibold cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save QR</span>
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSaveQr}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-semibold cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save QR</span>
+                </button>
+              )}
+              {canUseWebShareApi ? (
+                <button
+                  type="button"
+                  onClick={handleShareQr}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs font-medium cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#C6A45C]" />
+                  <span>Share QR</span>
+                </button>
+              ) : (
+                <a
+                  href={qrShareEndpoint}
+                  target="_blank"
+                  rel="external"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs font-medium cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#C6A45C]" />
+                  <span>Share QR</span>
+                </a>
+              )}
             </div>
           </div>
         </div>

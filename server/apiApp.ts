@@ -206,6 +206,7 @@ export function createApiApp(): Express {
       await ensureColdStartSync().catch(() => undefined);
       const db = getStoreSnapshot();
       const rawAmount = Number(req.query.amount);
+      const dispositionType = req.query.inline === '1' ? 'inline' : 'attachment';
       if (Number.isFinite(rawAmount) && rawAmount > 0) {
         const amount = Math.round(rawAmount);
         const upiUri = buildUpiPaymentUri(
@@ -224,7 +225,7 @@ export function createApiApp(): Express {
         res.setHeader('Content-Type', 'image/png');
         res.setHeader(
           'Content-Disposition',
-          `attachment; filename="bantuu-store-upi-qr-rs${amount}.png"`,
+          `${dispositionType}; filename="bantuu-store-upi-qr-rs${amount}.png"`,
         );
         res.setHeader('Cache-Control', 'no-store');
         res.send(qrPng);
@@ -321,6 +322,112 @@ export function createApiApp(): Express {
       res.status(404).json({ error: 'QR image not found.' });
     } catch {
       res.status(500).json({ error: 'Could not prepare QR download.' });
+    }
+  });
+
+  app.get('/api/upi-qr/share', async (req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const db = getStoreSnapshot();
+      const rawAmount = Number(req.query.amount);
+      const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? Math.round(rawAmount) : 0;
+      const esc = (str: string) =>
+        str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+      const safeStore = esc(db.settings.storeName || 'Bantuu Store');
+      const safeUpiId = esc(db.settings.upiId || 'skiend@axl');
+      const amountQuery = amount > 0 ? `amount=${amount}` : '';
+      const imgSrc = `/api/upi-qr/download?${amountQuery ? `${amountQuery}&` : ''}inline=1`;
+      const dlSrc = `/api/upi-qr/download${amountQuery ? `?${amountQuery}` : ''}`;
+      const fileName = amount > 0 ? `bantuu-store-upi-qr-rs${amount}.png` : 'bantuu-store-upi-qr.png';
+      const amountBadge = amount > 0 ? `₹${amount}` : 'UPI Payment';
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${safeStore} — Share UPI QR</title>
+  <style>
+    body{margin:0;padding:20px;font-family:system-ui,-apple-system,sans-serif;background:#F7F5EE;color:#0F1D32;display:flex;justify-content:center;align-items:center;min-height:100vh;box-sizing:border-box}
+    .card{width:100%;max-width:380px;background:#fff;border:1px solid #DED8C8;border-radius:16px;padding:20px;text-align:center;box-shadow:0 12px 30px rgba(15,29,50,.08)}
+    .eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A6D32;margin:0}
+    h1{font-size:19px;margin:6px 0 4px}
+    .amt{display:inline-block;margin:8px 0 12px;padding:4px 12px;border-radius:8px;background:#0F1D32;color:#C6A45C;font-weight:700;font-family:ui-monospace,monospace;font-size:14px}
+    .qr-wrap{background:#fff;border:1px solid #DED8C8;border-radius:12px;padding:10px;display:inline-block}
+    .qr-wrap img{width:230px;height:230px;display:block;object-fit:contain}
+    .upi{font-family:ui-monospace,monospace;font-size:13px;background:#F7F5EE;border:1px solid #DED8C8;border-radius:8px;padding:8px 12px;margin:12px 0;font-weight:600}
+    .btn{display:block;width:100%;box-sizing:border-box;padding:12px 16px;border-radius:10px;border:0;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;margin-top:10px}
+    .btn-primary{background:#0F1D32;color:#F7F5EE}
+    .btn-gold{background:#C6A45C;color:#0F1D32}
+    .btn-light{background:#F7F5EE;color:#0F1D32;border:1px solid #DED8C8}
+    .note{font-size:12px;color:#5C5852;line-height:1.45;margin:12px 0 0}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p class="eyebrow">${safeStore} · UPI Checkout</p>
+    <h1>Share or Save QR Code</h1>
+    <div class="amt">${amountBadge}</div>
+    <div>
+      <div class="qr-wrap">
+        <img id="qrImg" src="${imgSrc}" alt="UPI QR Code" />
+      </div>
+    </div>
+    <div class="upi">UPI ID: ${safeUpiId}</div>
+    <button id="shareBtn" type="button" class="btn btn-primary">Share QR to UPI App</button>
+    <a href="${dlSrc}" download="${fileName}" class="btn btn-gold">Save QR to Gallery</a>
+    <button id="copyBtn" type="button" class="btn btn-light">Copy UPI ID</button>
+    <p id="statusMsg" class="note">Tap Share QR to send this QR image directly to PhonePe, Google Pay, or Paytm, then enter your UTR in Bantuu Store.</p>
+  </div>
+  <script>
+    const imgUrl = ${JSON.stringify(imgSrc)};
+    const dlFileName = ${JSON.stringify(fileName)};
+    const upiId = ${JSON.stringify(db.settings.upiId || 'skiend@axl')};
+    const storeName = ${JSON.stringify(db.settings.storeName || 'Bantuu Store')};
+    const amountText = ${JSON.stringify(amount > 0 ? `Pay ₹${amount} to ${db.settings.upiId || 'skiend@axl'}` : `Pay via UPI to ${db.settings.upiId || 'skiend@axl'}`)};
+    const statusEl = document.getElementById('statusMsg');
+
+    async function shareQrNow() {
+      try {
+        const res = await fetch(imgUrl);
+        const blob = await res.blob();
+        const file = new File([blob], dlFileName, { type: blob.type || 'image/png' });
+        if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+          await navigator.share({ title: storeName + ' UPI QR', text: amountText, files: [file] });
+          statusEl.textContent = 'QR shared! Complete payment in your UPI app and return to enter UTR.';
+          return;
+        }
+        if (navigator.share) {
+          await navigator.share({ title: storeName + ' UPI QR', text: amountText, url: window.location.href });
+          return;
+        }
+        statusEl.textContent = 'Long-press the QR image or tap Save QR to Gallery, then scan in PhonePe/GPay.';
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        statusEl.textContent = 'Tap Save QR to Gallery or take a screenshot, then upload QR in your UPI app.';
+      }
+    }
+
+    document.getElementById('shareBtn').addEventListener('click', shareQrNow);
+    document.getElementById('copyBtn').addEventListener('click', async function() {
+      try {
+        await navigator.clipboard.writeText(upiId);
+        this.textContent = 'Copied: ' + upiId;
+      } catch (_) {}
+    });
+  </script>
+</body>
+</html>`);
+    } catch {
+      res.status(500).send('Could not load UPI QR share view.');
     }
   });
 
