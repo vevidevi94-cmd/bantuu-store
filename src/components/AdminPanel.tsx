@@ -5,6 +5,7 @@ import {
   BellOff,
   Check,
   ClipboardList,
+  Clock,
   Database,
   Film,
   Image as ImageIcon,
@@ -22,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  DEFAULT_STORE_HOURS,
   filterOrders,
   formatINR,
   formatOrderDateTime,
@@ -247,6 +249,7 @@ export function AdminPanel({
 
   // Store & Firebase RTDB Settings state
   const [setStoreName, setSetStoreName] = useState(settings.storeName);
+  const [setStoreHours, setSetStoreHours] = useState(settings.storeHours || DEFAULT_STORE_HOURS);
   const [setUpiId, setSetUpiId] = useState(settings.upiId);
   const [setUpiQrUrl, setSetUpiQrUrl] = useState(
     settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg',
@@ -420,6 +423,7 @@ export function AdminPanel({
 
   useEffect(() => {
     setSetStoreName(settings.storeName);
+    setSetStoreHours(settings.storeHours || DEFAULT_STORE_HOURS);
     setSetUpiId(settings.upiId);
     setSetUpiQrUrl(settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg');
     setSetMerchantName(settings.merchantName);
@@ -887,6 +891,7 @@ export function AdminPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeName: setStoreName,
+          storeHours: setStoreHours,
           upiId: setUpiId,
           upiQrUrl: setUpiQrUrl,
           merchantName: setMerchantName,
@@ -2040,7 +2045,7 @@ export function AdminPanel({
                         key={item.id}
                         className="relative rounded-lg border border-[#DED8C8] bg-[#F7F5EE] overflow-hidden"
                       >
-                        <div className="aspect-[4/3] w-full bg-[#ECE7DA]">
+                        <div className="aspect-[3/4] w-full bg-[#ECE7DA]">
                           <MediaRenderer
                             url={item.url}
                             type={item.type}
@@ -2134,17 +2139,33 @@ export function AdminPanel({
                 </p>
               </div>
 
-              <div>
-                <label htmlFor="set-store-name" className="block text-xs font-medium text-[#3E4756] mb-1.5">
-                  Store Name
-                </label>
-                <input
-                  id="set-store-name"
-                  type="text"
-                  value={setStoreName}
-                  onChange={(e) => setSetStoreName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="set-store-name" className="block text-xs font-medium text-[#3E4756] mb-1.5">
+                    Store Name
+                  </label>
+                  <input
+                    id="set-store-name"
+                    type="text"
+                    value={setStoreName}
+                    onChange={(e) => setSetStoreName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="set-store-hours" className="flex items-center gap-1.5 text-xs font-medium text-[#3E4756] mb-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[#8A6D32]" />
+                    <span>Store Open / Close Timing</span>
+                  </label>
+                  <input
+                    id="set-store-hours"
+                    type="text"
+                    value={setStoreHours}
+                    onChange={(e) => setSetStoreHours(e.target.value)}
+                    placeholder={DEFAULT_STORE_HOURS}
+                    className="w-full px-3.5 py-2.5 text-sm font-medium rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

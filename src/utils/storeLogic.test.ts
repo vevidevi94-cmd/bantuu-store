@@ -4,6 +4,7 @@ import {
   buildPhonePePaymentUri,
   buildUpiPaymentUri,
   calculateCartTotals,
+  DEFAULT_STORE_HOURS,
   filterOrders,
   filterProducts,
   formatINR,
@@ -303,4 +304,9 @@ test('validateCategoryName enforces uniqueness, length, and reserved All check',
   assert.equal(validateCategoryName('Apparel', ['Apparel', 'Audio'], 'Apparel'), null);
   assert.equal(validateCategoryName('Footwear', ['Apparel', 'Audio']), null);
 });
+
+test('DEFAULT_STORE_HOURS provides expected default store timing copy', () => {
+  assert.equal(DEFAULT_STORE_HOURS, 'Store open at 6:00 am close at 8:30 pm');
+});
+
 

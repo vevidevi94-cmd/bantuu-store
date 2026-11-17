@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   Check,
   ClipboardList,
+  Download,
   Film,
   Search,
+  Send,
   ShoppingBag,
   Zap,
 } from 'lucide-react';
@@ -17,6 +19,7 @@ import { ProductDetailModal } from './components/ProductDetailModal';
 import { TrackOrderModal } from './components/TrackOrderModal';
 import {
   calculateCartTotals,
+  DEFAULT_STORE_HOURS,
   filterProducts,
   formatINR,
   getPrimaryProductImage,
@@ -46,6 +49,7 @@ interface BantuuHistoryState {
 
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: 'Bantuu Store',
+  storeHours: DEFAULT_STORE_HOURS,
   upiId: 'skiend@axl',
   upiQrUrl: '/assets/aistudio/47084_f56d5f0a.jpg',
   merchantName: 'Bantuu Store Retail',
@@ -938,9 +942,14 @@ export default function App() {
         <section id="shop" className="max-w-7xl mx-auto px-3 sm:px-8 pt-6 sm:pt-10 pb-16">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-5 sm:pb-6 border-b border-[#DED8C8]">
             <div>
-              <p className="text-xs uppercase tracking-wider text-[#8A6D32] font-semibold">
-                Bantuu Store Catalog
-              </p>
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <p className="text-xs uppercase tracking-wider text-[#8A6D32] font-semibold">
+                  Bantuu Store Catalog
+                </p>
+                <span className="text-xs sm:text-[13px] font-bold text-[#0F1D32]">
+                  ({settings.storeHours || DEFAULT_STORE_HOURS})
+                </span>
+              </div>
               <h1 className="mt-1 font-display text-2xl sm:text-3xl font-semibold text-[#0F1D32]">
                 Featured Collection
               </h1>
@@ -1021,7 +1030,7 @@ export default function App() {
                   key={n}
                   className="bg-white border border-[#DED8C8] rounded-xl overflow-hidden animate-pulse"
                 >
-                  <div className="aspect-square sm:aspect-[4/3] bg-[#ECE7DA]" />
+                  <div className="aspect-[3/4] bg-[#ECE7DA]" />
                   <div className="p-3 sm:p-5 space-y-2.5 sm:space-y-3">
                     <div className="h-3 w-20 bg-[#ECE7DA] rounded" />
                     <div className="h-4 w-32 sm:w-48 bg-[#ECE7DA] rounded" />
@@ -1064,7 +1073,7 @@ export default function App() {
                       type="button"
                       onClick={() => openDetailModal(product)}
                       aria-label={`Inspect ${product.name} photos and details`}
-                      className="relative aspect-square sm:aspect-[4/3] w-full bg-[#ECE7DA] overflow-hidden text-left cursor-pointer"
+                      className="relative aspect-[3/4] w-full bg-[#ECE7DA] overflow-hidden text-left cursor-pointer"
                     >
                       {primaryMedia ? (
                         <MediaRenderer
@@ -1194,23 +1203,47 @@ export default function App() {
 
       {/* Midnight Navy Footer with BantuuLogo */}
       <footer className="border-t border-[#223654] bg-[#0F1D32] text-[#CBD3DF]">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5">
-            <BantuuLogo variant="dark" size="sm" />
-            <span className="text-[#CBD3DF]/80">
-              Curated Everyday Retail · UPI: {settings.upiId}
-            </span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex flex-row items-start sm:items-center justify-between gap-4 sm:gap-8 text-xs">
+          <div className="flex flex-col gap-3 min-w-0 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5">
+              <BantuuLogo variant="dark" size="sm" />
+              <span className="text-[#CBD3DF]/80 leading-relaxed">
+                Curated Everyday Retail · UPI: {settings.upiId}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
+              <button
+                type="button"
+                onClick={openTrackModal}
+                className="hover:text-[#C6A45C] cursor-pointer"
+              >
+                Track Order
+              </button>
+              <a href="#shop" className="hover:text-[#C6A45C]">
+                Browse Catalog
+              </a>
+            </div>
           </div>
-          <div className="flex items-center gap-5">
-            <button
-              type="button"
-              onClick={openTrackModal}
-              className="hover:text-[#C6A45C] cursor-pointer"
+
+          <div className="flex flex-col gap-2.5 shrink-0 items-end">
+            <a
+              href="https://github.com/banti194raj-svg/bantuustore/raw/refs/heads/main/bantuustore.apk"
+              download="bantuustore.apk"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-[11px] sm:text-xs font-bold hover:bg-[#B69249] transition-colors whitespace-nowrap"
             >
-              Track Order
-            </button>
-            <a href="#shop" className="hover:text-[#C6A45C]">
-              Browse Catalog
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>Download Bantuu Store APK</span>
+            </a>
+            <a
+              href="https://t.me/Iamkillerb"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Contact or Support on Telegram"
+              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-[11px] sm:text-xs font-semibold hover:bg-[#1F3659] hover:border-[#C6A45C]/50 transition-colors whitespace-nowrap"
+            >
+              <Send className="w-3.5 h-3.5 text-[#C6A45C] shrink-0" />
+              <span>Contact / Support</span>
             </a>
           </div>
         </div>

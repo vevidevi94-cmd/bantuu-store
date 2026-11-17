@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import type { Order, OrderStatus, Product, StoreSettings } from '../src/utils/storeLogic.js';
 import {
   calculateCartTotals,
+  DEFAULT_STORE_HOURS,
   normalizeCategoryName,
   normalizeFirebaseRtdbUrl,
   validateCategoryName,
@@ -47,6 +48,7 @@ const DEFAULT_CATEGORIES = [
 const SEED_DATA: StoreDatabase = {
   settings: {
     storeName: 'Bantuu Store',
+    storeHours: DEFAULT_STORE_HOURS,
     upiId: DEFAULT_UPI_ID,
     upiQrUrl: DEFAULT_UPI_QR_URL,
     merchantName: 'Bantuu Store Retail',
@@ -230,6 +232,9 @@ function ensureDbInitialized(): StoreDatabase {
   if (parsed.settings.storeName === 'Bantu Store') {
     parsed.settings.storeName = 'Bantuu Store';
   }
+  if (!parsed.settings.storeHours || !parsed.settings.storeHours.trim()) {
+    parsed.settings.storeHours = DEFAULT_STORE_HOURS;
+  }
   if (!parsed.settings.upiId || parsed.settings.upiId === 'bantustore@upi') {
     parsed.settings.upiId = DEFAULT_UPI_ID;
   }
@@ -390,13 +395,17 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
   if (remote.settings) {
     const needsQrMigration =
       !remote.settings.upiQrUrl || remote.settings.upiQrUrl.includes('47084_35196505');
+    const needsHoursMigration = !remote.settings.storeHours || !remote.settings.storeHours.trim();
     const needsUpiMigration =
       !remote.settings.upiId ||
       remote.settings.upiId === 'bantustore@upi' ||
-      needsQrMigration;
+      needsQrMigration ||
+      needsHoursMigration;
     db.settings = {
       ...db.settings,
       ...remote.settings,
+      storeHours:
+        remote.settings.storeHours?.trim() || db.settings.storeHours || DEFAULT_STORE_HOURS,
       upiId:
         !remote.settings.upiId || remote.settings.upiId === 'bantustore@upi'
           ? DEFAULT_UPI_ID
@@ -633,6 +642,10 @@ export async function updateStoreSettingsRecord(
     db.settings = {
       ...db.settings,
       storeName: patch.storeName?.trim() || db.settings.storeName,
+      storeHours:
+        patch.storeHours !== undefined
+          ? patch.storeHours.trim() || DEFAULT_STORE_HOURS
+          : db.settings.storeHours || DEFAULT_STORE_HOURS,
       upiId: patch.upiId?.trim() || db.settings.upiId,
       upiQrUrl:
         patch.upiQrUrl !== undefined

@@ -90,7 +90,7 @@ export function CartDrawer({
           ) : (
             items.map((item) => (
               <div key={item.productId} className="py-4 first:pt-0 last:pb-0 flex gap-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#F7F5EE] border border-[#DED8C8] shrink-0">
+                <div className="w-16 aspect-[3/4] rounded-lg overflow-hidden bg-[#F7F5EE] border border-[#DED8C8] shrink-0">
                   <MediaRenderer
                     url={item.imageUrl}
                     type="image"

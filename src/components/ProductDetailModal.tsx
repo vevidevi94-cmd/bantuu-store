@@ -71,7 +71,7 @@ export function ProductDetailModal({
 
         {/* Left Media Gallery (Photos & Videos) */}
         <div className="w-full md:w-[54%] bg-[#F7F5EE] p-5 flex flex-col gap-4 border-b md:border-b-0 md:border-r border-[#DED8C8]">
-          <div className="relative aspect-[4/3] w-full rounded-lg overflow-hidden bg-[#ECE7DA] border border-[#DED8C8]">
+          <div className="relative aspect-[3/4] w-full max-w-[340px] mx-auto rounded-lg overflow-hidden bg-[#ECE7DA] border border-[#DED8C8]">
             {activeMedia ? (
               <MediaRenderer
                 key={activeMedia.url}
@@ -96,7 +96,7 @@ export function ProductDetailModal({
                     type="button"
                     onClick={() => setActiveMediaIndex(idx)}
                     aria-label={`View ${item.type} ${idx + 1} for ${product.name}`}
-                    className={`relative w-16 h-14 rounded-md overflow-hidden shrink-0 border transition-all cursor-pointer ${
+                    className={`relative w-12 aspect-[3/4] rounded-md overflow-hidden shrink-0 border transition-all cursor-pointer ${
                       isSelected
                         ? 'border-[#C6A45C] ring-2 ring-[#C6A45C]/40'
                         : 'border-[#DED8C8] opacity-75 hover:opacity-100'

@@ -59,8 +59,11 @@ export interface Order {
   createdAt: string;
 }
 
+export const DEFAULT_STORE_HOURS = 'Store open at 6:00 am close at 8:30 pm';
+
 export interface StoreSettings {
   storeName: string;
+  storeHours?: string;
   upiId: string;
   upiQrUrl?: string;
   merchantName: string;
