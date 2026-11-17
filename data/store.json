@@ -7,7 +7,13 @@
     "shippingFee": 0,
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
     "upiQrUrl": "/assets/aistudio/47084_f56d5f0a.jpg",
-    "storeHours": "Store open at 6:00 am close at 8:30 pm"
+    "storeHours": "Store open at 6:00 am close at 8:30 pm",
+    "codEyebrow": "01. Cash on Delivery",
+    "codTitle": "Pay when your parcel arrives",
+    "codDescription": "Select Cash on Delivery at checkout for doorstep cash payment across serviceable Indian pincodes.",
+    "upiEyebrow": "02. Instant UPI Checkout",
+    "upiTitle": "Direct transfer via any UPI app",
+    "upiDescription": "Pay via Google Pay, PhonePe, Paytm, or BHIM directly to {upiId} and attach your UTR reference."
   },
   "nextOrderSeq": 1020,
   "products": [
@@ -123,6 +129,7 @@
       "category": "Cold drinks",
       "createdAt": "2026-11-17T08:03:42.797Z",
       "description": "MFD-9/26\nEXP-1/27",
+      "discountPercent": 0,
       "featured": true,
       "id": "prod-48fb4162",
       "media": [
@@ -134,6 +141,7 @@
         }
       ],
       "name": "Sprite",
+      "pinned": false,
       "price": 45,
       "stock": 7
     },

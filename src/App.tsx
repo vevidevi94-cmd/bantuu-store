@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Download,
   Film,
+  Pin,
   Search,
   Send,
   ShoppingBag,
@@ -19,10 +20,13 @@ import { ProductDetailModal } from './components/ProductDetailModal';
 import { TrackOrderModal } from './components/TrackOrderModal';
 import {
   calculateCartTotals,
+  calculateOriginalMrp,
+  DEFAULT_PROMISE_COPY,
   DEFAULT_STORE_HOURS,
   filterProducts,
   formatINR,
   getPrimaryProductImage,
+  normalizeDiscountPercent,
   sanitizeCartWithCatalog,
   type CartItem,
   type Order,
@@ -31,6 +35,7 @@ import {
 } from './utils/storeLogic';
 import { adminFetch, clearAdminSessionToken } from './utils/adminClientAuth';
 import { registerNotificationServiceWorker } from './utils/adminAlerts';
+import { useScrollLock } from './utils/useScrollLock';
 
 const CART_STORAGE_KEY = 'bantuu_store_cart_v1';
 const ORDERS_STORAGE_KEY = 'bantuu_customer_orders_v1';
@@ -55,6 +60,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   merchantName: 'Bantuu Store Retail',
   freeShippingThreshold: 999,
   shippingFee: 79,
+  ...DEFAULT_PROMISE_COPY,
 };
 
 const DEFAULT_CATEGORIES = [
@@ -171,6 +177,16 @@ export default function App() {
     clearCartOnSuccess: false,
   });
   const [isTrackOpen, setIsTrackOpen] = useState(false);
+
+  const hasActiveModal = Boolean(
+    !(isAdminMode && isAdminAuthenticated) &&
+      (detailProduct ||
+        isCartOpen ||
+        checkoutState.isOpen ||
+        isTrackOpen ||
+        isPasswordModalOpen),
+  );
+  useScrollLock(hasActiveModal);
 
   const productsRef = useRef<Product[]>(products);
   productsRef.current = products;
@@ -1063,6 +1079,8 @@ export default function App() {
                 const hasVideo = product.media.some((m) => m.type === 'video');
                 const outOfStock = product.stock <= 0;
                 const justAdded = addedCardId === product.id;
+                const discountPct = normalizeDiscountPercent(product.discountPercent);
+                const originalMrp = calculateOriginalMrp(product.price, discountPct);
 
                 return (
                   <article
@@ -1086,6 +1104,19 @@ export default function App() {
                         />
                       ) : (
                         <MediaRenderer url="" type="image" alt={product.name} />
+                      )}
+
+                      {product.pinned && (
+                        <span className="absolute top-2 left-2 sm:top-3 sm:left-3 inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded bg-[#0F1D32]/90 text-[#C6A45C] text-[10px] font-bold uppercase tracking-wider">
+                          <Pin className="w-2.5 h-2.5" />
+                          <span>Pinned</span>
+                        </span>
+                      )}
+
+                      {discountPct > 0 && (
+                        <span className="absolute top-2 right-2 sm:top-3 sm:right-3 inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded bg-[#B91C1C] text-white text-[10px] sm:text-[11px] font-bold">
+                          {discountPct}% OFF
+                        </span>
                       )}
 
                       {hasVideo && (
@@ -1116,9 +1147,16 @@ export default function App() {
                             {product.name}
                           </button>
                           <div className="flex items-center justify-between gap-2 shrink-0">
-                            <span className="font-mono text-sm sm:text-[15px] font-bold sm:font-semibold text-[#0F1D32] tabular-nums">
-                              {formatINR(product.price)}
-                            </span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="font-mono text-sm sm:text-[15px] font-bold sm:font-semibold text-[#0F1D32] tabular-nums">
+                                {formatINR(product.price)}
+                              </span>
+                              {originalMrp && (
+                                <span className="font-mono text-[11px] text-[#5C5852] line-through tabular-nums">
+                                  {formatINR(originalMrp)}
+                                </span>
+                              )}
+                            </div>
                             <span className="sm:hidden text-[10px] font-mono uppercase tracking-wider text-[#8A6D32] font-semibold">
                               UPI · COD
                             </span>
@@ -1177,24 +1215,27 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-5 sm:px-8 py-12 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <p className="text-xs uppercase tracking-wider text-[#8A6D32] font-semibold">
-                01. Cash on Delivery
+                {settings.codEyebrow || DEFAULT_PROMISE_COPY.codEyebrow}
               </p>
               <h3 className="mt-2 text-lg font-semibold text-[#0F1D32]">
-                Pay when your parcel arrives
+                {settings.codTitle || DEFAULT_PROMISE_COPY.codTitle}
               </h3>
               <p className="mt-1.5 text-sm text-[#3E4756] leading-relaxed">
-                Select Cash on Delivery at checkout for doorstep cash payment across serviceable Indian pincodes.
+                {settings.codDescription || DEFAULT_PROMISE_COPY.codDescription}
               </p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wider text-[#8A6D32] font-semibold">
-                02. Instant UPI Checkout
+                {settings.upiEyebrow || DEFAULT_PROMISE_COPY.upiEyebrow}
               </p>
               <h3 className="mt-2 text-lg font-semibold text-[#0F1D32]">
-                Direct transfer via any UPI app
+                {settings.upiTitle || DEFAULT_PROMISE_COPY.upiTitle}
               </h3>
               <p className="mt-1.5 text-sm text-[#3E4756] leading-relaxed">
-                Pay via Google Pay, PhonePe, Paytm, or BHIM directly to {settings.upiId} and attach your UTR reference.
+                {(settings.upiDescription || DEFAULT_PROMISE_COPY.upiDescription).replace(
+                  /\{upiId\}/g,
+                  settings.upiId,
+                )}
               </p>
             </div>
           </div>

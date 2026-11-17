@@ -170,7 +170,7 @@ export function TrackOrderModal({
           </button>
         </div>
 
-        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
+        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto overscroll-contain flex-1 min-h-0">
           <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
             <label htmlFor="track-query" className="sr-only">
               Order Number or Phone Number

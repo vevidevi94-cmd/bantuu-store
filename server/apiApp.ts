@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express, { type Express } from 'express';
+import QRCode from 'qrcode';
 import {
   buildAdminSessionCookie,
   buildClearAdminCookie,
@@ -24,9 +25,12 @@ import {
   renameCategoryRecord,
   syncWithRtdbOnBootOrRefresh,
   updateOrderStatusRecord,
+  updateProductRecord,
   updateStoreSettingsRecord,
 } from './storeDb.js';
 import {
+  buildUpiPaymentUri,
+  normalizeDiscountPercent,
   validateCheckoutForm,
   validateProductForm,
   type OrderStatus,
@@ -201,6 +205,32 @@ export function createApiApp(): Express {
     try {
       await ensureColdStartSync().catch(() => undefined);
       const db = getStoreSnapshot();
+      const rawAmount = Number(req.query.amount);
+      if (Number.isFinite(rawAmount) && rawAmount > 0) {
+        const amount = Math.round(rawAmount);
+        const upiUri = buildUpiPaymentUri(
+          db.settings.upiId,
+          db.settings.merchantName,
+          amount,
+          `${db.settings.storeName} Order`,
+        );
+        const qrPng = await QRCode.toBuffer(upiUri, {
+          type: 'png',
+          width: 640,
+          margin: 2,
+          color: { dark: '#0F1D32', light: '#FFFFFF' },
+          errorCorrectionLevel: 'M',
+        });
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="bantuu-store-upi-qr-rs${amount}.png"`,
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(qrPng);
+        return;
+      }
+
       const qrUrl = (db.settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg').trim();
 
       if (qrUrl.startsWith('data:image/')) {
@@ -309,6 +339,7 @@ export function createApiApp(): Express {
       stock: body.stock,
       description: body.description,
       media: body.media,
+      discountPercent: body.discountPercent,
     });
     if (Object.keys(errors).length > 0) {
       res.status(400).json({ error: 'Validation failed', errors });
@@ -323,9 +354,63 @@ export function createApiApp(): Express {
       description: String(body.description),
       media: body.media,
       featured: Boolean(body.featured),
+      pinned: Boolean(body.pinned),
+      discountPercent: normalizeDiscountPercent(body.discountPercent),
     });
 
     res.status(201).json({ product, rtdb: getRtdbSyncState() });
+  });
+
+  app.patch('/api/products/:id', requireAdminMiddleware, async (req, res) => {
+    await ensureColdStartSync().catch(() => undefined);
+    const productId = String(req.params.id);
+    const existing = getStoreSnapshot().products.find((p) => p.id === productId);
+    if (!existing) {
+      res.status(404).json({ error: 'Product not found.' });
+      return;
+    }
+
+    const body = req.body || {};
+    const merged = {
+      name: body.name !== undefined ? String(body.name) : existing.name,
+      category: body.category !== undefined ? String(body.category) : existing.category,
+      price: body.price !== undefined ? Number(body.price) : existing.price,
+      stock: body.stock !== undefined ? Number(body.stock) : existing.stock,
+      description: body.description !== undefined ? String(body.description) : existing.description,
+      media: Array.isArray(body.media) ? body.media : existing.media,
+      discountPercent:
+        body.discountPercent !== undefined
+          ? body.discountPercent
+          : existing.discountPercent ?? 0,
+    };
+
+    const errors = validateProductForm(merged);
+    if (Object.keys(errors).length > 0) {
+      res.status(400).json({ error: 'Validation failed', errors });
+      return;
+    }
+
+    const updated = await updateProductRecord(productId, {
+      name: body.name !== undefined ? String(body.name) : undefined,
+      category: body.category !== undefined ? String(body.category) : undefined,
+      price: body.price !== undefined ? Number(body.price) : undefined,
+      stock: body.stock !== undefined ? Number(body.stock) : undefined,
+      description: body.description !== undefined ? String(body.description) : undefined,
+      media: Array.isArray(body.media) ? body.media : undefined,
+      featured: body.featured !== undefined ? Boolean(body.featured) : undefined,
+      pinned: body.pinned !== undefined ? Boolean(body.pinned) : undefined,
+      discountPercent:
+        body.discountPercent !== undefined
+          ? normalizeDiscountPercent(body.discountPercent)
+          : undefined,
+    });
+
+    if (!updated) {
+      res.status(404).json({ error: 'Product not found.' });
+      return;
+    }
+
+    res.json({ product: updated, rtdb: getRtdbSyncState() });
   });
 
   app.delete('/api/products/:id', requireAdminMiddleware, async (req, res) => {

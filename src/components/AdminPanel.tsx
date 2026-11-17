@@ -13,6 +13,8 @@ import {
   LogOut,
   Package,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
   Search,
   Settings,
@@ -23,12 +25,16 @@ import {
   X,
 } from 'lucide-react';
 import {
+  calculateOriginalMrp,
+  DEFAULT_PROMISE_COPY,
   DEFAULT_STORE_HOURS,
   filterOrders,
   formatINR,
   formatOrderDateTime,
   inferMediaTypeFromUrl,
+  normalizeDiscountPercent,
   normalizeFirebaseRtdbUrl,
+  sortProductsWithPinned,
   validateCategoryName,
   validateProductForm,
   type Order,
@@ -217,15 +223,21 @@ export function AdminPanel({
     [orders, selectedOrderId],
   );
 
-  // Products filters & delete state
+  // Products filters & delete/edit/pin state
   const [productQuery, setProductQuery] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pinningId, setPinningId] = useState<string | null>(null);
+  const [discountSavingId, setDiscountSavingId] = useState<string | null>(null);
+  const [quickDiscounts, setQuickDiscounts] = useState<Record<string, string>>({});
 
-  // Add Product form state
+  // Add / Edit Product form state
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [prodName, setProdName] = useState('');
   const [prodCategory, setProdCategory] = useState(categories[0] || 'Home & Living');
   const [prodPrice, setProdPrice] = useState('');
+  const [prodDiscountPercent, setProdDiscountPercent] = useState('0');
+  const [prodPinned, setProdPinned] = useState(false);
   const [prodStock, setProdStock] = useState('15');
   const [prodDescription, setProdDescription] = useState('');
   const [prodMedia, setProdMedia] = useState<ProductMedia[]>([]);
@@ -259,6 +271,24 @@ export function AdminPanel({
   const [setShippingFee, setSetShippingFee] = useState(String(settings.shippingFee));
   const [setRtdbUrl, setSetRtdbUrl] = useState(settings.firebaseRtdbUrl || '');
   const [adminRtdbUrl, setAdminRtdbUrl] = useState(settings.firebaseRtdbUrl || '');
+  const [setCodEyebrow, setSetCodEyebrow] = useState(
+    settings.codEyebrow || DEFAULT_PROMISE_COPY.codEyebrow,
+  );
+  const [setCodTitle, setSetCodTitle] = useState(
+    settings.codTitle || DEFAULT_PROMISE_COPY.codTitle,
+  );
+  const [setCodDescription, setSetCodDescription] = useState(
+    settings.codDescription || DEFAULT_PROMISE_COPY.codDescription,
+  );
+  const [setUpiEyebrow, setSetUpiEyebrow] = useState(
+    settings.upiEyebrow || DEFAULT_PROMISE_COPY.upiEyebrow,
+  );
+  const [setUpiTitle, setSetUpiTitle] = useState(
+    settings.upiTitle || DEFAULT_PROMISE_COPY.upiTitle,
+  );
+  const [setUpiDescription, setSetUpiDescription] = useState(
+    settings.upiDescription || DEFAULT_PROMISE_COPY.upiDescription,
+  );
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [settingsError, setSettingsError] = useState('');
@@ -429,6 +459,12 @@ export function AdminPanel({
     setSetMerchantName(settings.merchantName);
     setSetFreeThreshold(String(settings.freeShippingThreshold));
     setSetShippingFee(String(settings.shippingFee));
+    setSetCodEyebrow(settings.codEyebrow || DEFAULT_PROMISE_COPY.codEyebrow);
+    setSetCodTitle(settings.codTitle || DEFAULT_PROMISE_COPY.codTitle);
+    setSetCodDescription(settings.codDescription || DEFAULT_PROMISE_COPY.codDescription);
+    setSetUpiEyebrow(settings.upiEyebrow || DEFAULT_PROMISE_COPY.upiEyebrow);
+    setSetUpiTitle(settings.upiTitle || DEFAULT_PROMISE_COPY.upiTitle);
+    setSetUpiDescription(settings.upiDescription || DEFAULT_PROMISE_COPY.upiDescription);
     if (settings.firebaseRtdbUrl) {
       setAdminRtdbUrl(settings.firebaseRtdbUrl);
       setSetRtdbUrl(settings.firebaseRtdbUrl);
@@ -442,12 +478,14 @@ export function AdminPanel({
 
   const filteredProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q),
-    );
+    const matched = !q
+      ? products
+      : products.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            p.category.toLowerCase().includes(q),
+        );
+    return sortProductsWithPinned(matched);
   }, [products, productQuery]);
 
   const metrics = useMemo(() => {
@@ -691,6 +729,97 @@ export function AdminPanel({
     setMediaUrlInput('');
   };
 
+  const resetProductForm = () => {
+    setEditingProductId(null);
+    setProdName('');
+    setProdCategory(categories[0] || 'Home & Living');
+    setProdPrice('');
+    setProdDiscountPercent('0');
+    setProdPinned(false);
+    setProdStock('15');
+    setProdDescription('');
+    setProdMedia([]);
+    setMediaUrlInput('');
+    setUploadError('');
+    setProdErrors({});
+  };
+
+  const handleStartEditProduct = (product: Product) => {
+    setEditingProductId(product.id);
+    setProdName(product.name);
+    setProdCategory(product.category || categories[0] || 'Home & Living');
+    setProdPrice(String(product.price));
+    setProdDiscountPercent(String(normalizeDiscountPercent(product.discountPercent)));
+    setProdPinned(Boolean(product.pinned));
+    setProdStock(String(product.stock));
+    setProdDescription(product.description);
+    setProdMedia(Array.isArray(product.media) ? [...product.media] : []);
+    setMediaUrlInput('');
+    setUploadError('');
+    setProdErrors({});
+    setProdSuccessMsg('');
+    onTabChange('add-product');
+  };
+
+  const handleTogglePinProduct = async (product: Product) => {
+    setPinningId(product.id);
+    setProdSuccessMsg('');
+    try {
+      const nextPinned = !product.pinned;
+      const res = await adminFetch(`/api/products/${product.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: nextPinned }),
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{ product?: Product; rtdb?: RtdbStateInfo }>(res);
+      if (res.ok && data?.product) {
+        onProductsChanged(products.map((p) => (p.id === product.id ? data.product! : p)));
+        if (data.rtdb) setRtdbInfo(data.rtdb);
+        setProdSuccessMsg(
+          nextPinned
+            ? `"${product.name}" pinned to the top of All & Catalog.`
+            : `"${product.name}" unpinned from top.`,
+        );
+      }
+    } finally {
+      setPinningId(null);
+    }
+  };
+
+  const handleSaveQuickDiscount = async (product: Product) => {
+    const rawVal = quickDiscounts[product.id] ?? String(normalizeDiscountPercent(product.discountPercent));
+    const pct = normalizeDiscountPercent(rawVal);
+    setDiscountSavingId(product.id);
+    setProdSuccessMsg('');
+    try {
+      const res = await adminFetch(`/api/products/${product.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discountPercent: pct }),
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const { data } = await parseApiJson<{ product?: Product; rtdb?: RtdbStateInfo }>(res);
+      if (res.ok && data?.product) {
+        onProductsChanged(products.map((p) => (p.id === product.id ? data.product! : p)));
+        if (data.rtdb) setRtdbInfo(data.rtdb);
+        setProdSuccessMsg(
+          pct > 0
+            ? `Updated "${product.name}" offer badge to ${pct}% OFF.`
+            : `Cleared discount badge on "${product.name}".`,
+        );
+      }
+    } finally {
+      setDiscountSavingId(null);
+    }
+  };
+
   const handleCreateProduct = async (e: FormEvent) => {
     e.preventDefault();
     setProdSuccessMsg('');
@@ -702,6 +831,8 @@ export function AdminPanel({
       stock: prodStock,
       description: prodDescription,
       media: prodMedia,
+      discountPercent: prodDiscountPercent,
+      pinned: prodPinned,
     });
 
     if (Object.keys(validation).length > 0) {
@@ -712,8 +843,10 @@ export function AdminPanel({
     setProdErrors({});
     setProdSaving(true);
     try {
-      const res = await adminFetch('/api/products', {
-        method: 'POST',
+      const isEditing = Boolean(editingProductId);
+      const endpoint = isEditing ? `/api/products/${editingProductId}` : '/api/products';
+      const res = await adminFetch(endpoint, {
+        method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: prodName,
@@ -723,6 +856,8 @@ export function AdminPanel({
           description: prodDescription,
           media: prodMedia,
           featured: true,
+          pinned: prodPinned,
+          discountPercent: normalizeDiscountPercent(prodDiscountPercent),
         }),
       });
       if (res.status === 401) {
@@ -744,14 +879,18 @@ export function AdminPanel({
         return;
       }
 
-      onProductsChanged([data.product, ...products]);
+      if (isEditing) {
+        onProductsChanged(products.map((p) => (p.id === data.product!.id ? data.product! : p)));
+      } else {
+        onProductsChanged([data.product, ...products]);
+      }
       if (data.rtdb) setRtdbInfo(data.rtdb);
-      setProdName('');
-      setProdPrice('');
-      setProdStock('15');
-      setProdDescription('');
-      setProdMedia([]);
-      setProdSuccessMsg(`"${data.product.name}" published to Bantuu Store & Firebase RTDB.`);
+      resetProductForm();
+      setProdSuccessMsg(
+        isEditing
+          ? `"${data.product.name}" updated & synced to Firebase RTDB.`
+          : `"${data.product.name}" published to Bantuu Store & Firebase RTDB.`,
+      );
       onTabChange('products');
     } catch {
       setProdErrors({ submit: 'Could not reach the server to save product. Please try again.' });
@@ -898,6 +1037,12 @@ export function AdminPanel({
           freeShippingThreshold: Number(setFreeThreshold) || 0,
           shippingFee: Number(setShippingFee) || 0,
           firebaseRtdbUrl: setRtdbUrl,
+          codEyebrow: setCodEyebrow,
+          codTitle: setCodTitle,
+          codDescription: setCodDescription,
+          upiEyebrow: setUpiEyebrow,
+          upiTitle: setUpiTitle,
+          upiDescription: setUpiDescription,
         }),
       });
       if (res.status === 401) {
@@ -1015,6 +1160,7 @@ export function AdminPanel({
               type="button"
               onClick={() => {
                 setProdSuccessMsg('');
+                resetProductForm();
                 onTabChange('add-product');
               }}
               className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
@@ -1024,7 +1170,7 @@ export function AdminPanel({
               }`}
             >
               <Plus className="w-4 h-4" />
-              <span>Add Product</span>
+              <span>{editingProductId ? 'Edit Product' : 'Add Product'}</span>
             </button>
 
             <button
@@ -1535,6 +1681,7 @@ export function AdminPanel({
                 type="button"
                 onClick={() => {
                   setProdSuccessMsg('');
+                  resetProductForm();
                   onTabChange('add-product');
                 }}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#C6A45C] text-[#0F1D32] hover:bg-[#B69249] transition-colors cursor-pointer whitespace-nowrap shrink-0"
@@ -1583,80 +1730,194 @@ export function AdminPanel({
                     const videoCount = product.media.filter((m) => m.type === 'video').length;
                     const firstMedia = product.media[0];
                     const isConfirming = confirmDeleteId === product.id;
+                    const currentDiscount = normalizeDiscountPercent(product.discountPercent);
+                    const draftDiscount =
+                      quickDiscounts[product.id] ?? String(currentDiscount);
+                    const mrpPreview = calculateOriginalMrp(product.price, currentDiscount);
 
                     return (
                       <div
                         key={product.id}
-                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#F7F5EE]/60 transition-colors"
+                        className="p-4 flex flex-col gap-3 hover:bg-[#F7F5EE]/60 transition-colors"
                       >
-                        <div className="flex items-center gap-4 min-w-0">
-                          <div className="w-20 h-16 rounded-lg overflow-hidden bg-[#ECE7DA] border border-[#DED8C8] shrink-0">
-                            {firstMedia ? (
-                              <MediaRenderer
-                                url={firstMedia.url}
-                                type={firstMedia.type}
-                                alt={product.name}
-                                controls={false}
-                                muted
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <MediaRenderer url="" type="image" alt={product.name} />
-                            )}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-4 min-w-0">
+                            <div className="w-16 aspect-[3/4] rounded-lg overflow-hidden bg-[#ECE7DA] border border-[#DED8C8] shrink-0">
+                              {firstMedia ? (
+                                <MediaRenderer
+                                  url={firstMedia.url}
+                                  type={firstMedia.type}
+                                  alt={product.name}
+                                  controls={false}
+                                  muted
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <MediaRenderer url="" type="image" alt={product.name} />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="text-[11px] uppercase tracking-wider text-[#8A6D32] font-medium">
+                                  {product.category} · {photoCount} photo{photoCount === 1 ? '' : 's'}
+                                  {videoCount > 0 ? ` · ${videoCount} video${videoCount === 1 ? '' : 's'}` : ''}
+                                </p>
+                                {product.pinned && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0F1D32] text-[#C6A45C] text-[10px] font-bold uppercase tracking-wider">
+                                    <Pin className="w-2.5 h-2.5" />
+                                    <span>Pinned Top</span>
+                                  </span>
+                                )}
+                                {currentDiscount > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#B91C1C] text-white text-[10px] font-bold">
+                                    {currentDiscount}% OFF
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="text-base font-semibold text-[#0F1D32] truncate mt-0.5">
+                                {product.name}
+                              </h3>
+                              <p className="text-xs text-[#5C5852] line-clamp-1 mt-0.5">
+                                {product.description}
+                              </p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-[11px] uppercase tracking-wider text-[#8A6D32] font-medium">
-                              {product.category} · {photoCount} photo{photoCount === 1 ? '' : 's'}
-                              {videoCount > 0 ? ` · ${videoCount} video${videoCount === 1 ? '' : 's'}` : ''}
-                            </p>
-                            <h3 className="text-base font-semibold text-[#0F1D32] truncate">
-                              {product.name}
-                            </h3>
-                            <p className="text-xs text-[#5C5852] line-clamp-1 mt-0.5">
-                              {product.description}
-                            </p>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                            <div className="text-left sm:text-right">
+                              <div className="flex items-baseline gap-1.5 sm:justify-end">
+                                <p className="font-mono text-sm font-semibold text-[#0F1D32] tabular-nums">
+                                  {formatINR(product.price)}
+                                </p>
+                                {mrpPreview && (
+                                  <span className="font-mono text-xs text-[#5C5852] line-through tabular-nums">
+                                    {formatINR(mrpPreview)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="font-mono text-xs text-[#5C5852] tabular-nums">
+                                Stock: {product.stock}
+                              </p>
+                            </div>
+
+                            {isConfirming ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={deletingId === product.id}
+                                  onClick={() => handleDeleteProduct(product.id, product.name)}
+                                  className="px-3 py-2 text-xs font-medium rounded-lg bg-[#B91C1C] text-white hover:bg-[#991B1B] cursor-pointer whitespace-nowrap"
+                                >
+                                  {deletingId === product.id ? 'Deleting...' : 'Confirm Delete'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  aria-label={`Edit ${product.name}`}
+                                  onClick={() => handleStartEditProduct(product)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[#0F1D32] bg-[#0F1D32] text-[#F7F5EE] hover:bg-[#172A46] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 text-[#C6A45C]" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`Delete ${product.name}`}
+                                  onClick={() => setConfirmDeleteId(product.id)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white text-[#B91C1C] hover:bg-[#FEF2F2] hover:border-[#DC2626]/40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0">
-                          <div className="text-right">
-                            <p className="font-mono text-sm font-semibold text-[#0F1D32] tabular-nums">
-                              {formatINR(product.price)}
-                            </p>
-                            <p className="font-mono text-xs text-[#5C5852] tabular-nums">
-                              Stock: {product.stock}
-                            </p>
-                          </div>
+                        {/* Quick Pin-to-Top & Custom Discount % Controls */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-[#DED8C8]/70 text-xs">
+                          <button
+                            type="button"
+                            disabled={pinningId === product.id}
+                            onClick={() => handleTogglePinProduct(product)}
+                            aria-label={product.pinned ? `Unpin ${product.name} from top` : `Pin ${product.name} to top`}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                              product.pinned
+                                ? 'border-[#C6A45C] bg-[#C6A45C] text-[#0F1D32]'
+                                : 'border-[#DED8C8] bg-white text-[#0F1D32] hover:bg-[#F7F5EE]'
+                            }`}
+                          >
+                            {product.pinned ? (
+                              <>
+                                <PinOff className="w-3.5 h-3.5" />
+                                <span>{pinningId === product.id ? 'Updating...' : 'Pinned on Top (Unpin)'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Pin className="w-3.5 h-3.5 text-[#8A6D32]" />
+                                <span>{pinningId === product.id ? 'Pinning...' : 'Pin to Top'}</span>
+                              </>
+                            )}
+                          </button>
 
-                          {isConfirming ? (
-                            <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-[#5C5852]">
+                              Offer %:
+                            </span>
+                            {[80, 90].map((preset) => (
                               <button
+                                key={preset}
                                 type="button"
-                                disabled={deletingId === product.id}
-                                onClick={() => handleDeleteProduct(product.id, product.name)}
-                                className="px-3 py-2 text-xs font-medium rounded-lg bg-[#B91C1C] text-white hover:bg-[#991B1B] cursor-pointer whitespace-nowrap"
+                                onClick={() =>
+                                  setQuickDiscounts((prev) => ({
+                                    ...prev,
+                                    [product.id]: String(preset),
+                                  }))
+                                }
+                                className={`px-2 py-1 rounded border text-[11px] font-mono font-semibold cursor-pointer ${
+                                  draftDiscount === String(preset)
+                                    ? 'border-[#0F1D32] bg-[#0F1D32] text-[#C6A45C]'
+                                    : 'border-[#DED8C8] bg-white text-[#3E4756] hover:bg-[#F7F5EE]'
+                                }`}
                               >
-                                {deletingId === product.id ? 'Deleting...' : 'Confirm Delete'}
+                                {preset}%
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteId(null)}
-                                className="px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
+                            ))}
+                            <label htmlFor={`quick-disc-${product.id}`} className="sr-only">
+                              Discount percentage for {product.name}
+                            </label>
+                            <input
+                              id={`quick-disc-${product.id}`}
+                              type="number"
+                              min="0"
+                              max="99"
+                              value={draftDiscount}
+                              onChange={(e) =>
+                                setQuickDiscounts((prev) => ({
+                                  ...prev,
+                                  [product.id]: e.target.value,
+                                }))
+                              }
+                              className="w-16 px-2 py-1 text-xs font-mono rounded border border-[#DED8C8] bg-white focus:outline-none focus:border-[#0F1D32]"
+                            />
                             <button
                               type="button"
-                              aria-label={`Delete ${product.name}`}
-                              onClick={() => setConfirmDeleteId(product.id)}
-                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white text-[#B91C1C] hover:bg-[#FEF2F2] hover:border-[#DC2626]/40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                              disabled={discountSavingId === product.id}
+                              onClick={() => handleSaveQuickDiscount(product)}
+                              className="px-2.5 py-1 rounded bg-[#0F1D32] text-[#F7F5EE] text-[11px] font-medium hover:bg-[#172A46] disabled:opacity-50 cursor-pointer"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
+                              {discountSavingId === product.id ? 'Saving...' : 'Apply %'}
                             </button>
-                          )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1855,16 +2116,32 @@ export function AdminPanel({
           </div>
         )}
 
-        {/* ADD PRODUCT TAB */}
+        {/* ADD / EDIT PRODUCT TAB */}
         {activeTab === 'add-product' && (
           <div className="space-y-6 max-w-3xl">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-[#8A6D32] font-semibold">
-                Admin / New Product
-              </p>
-              <h1 className="text-2xl font-semibold text-[#0F1D32] mt-1">
-                Add Product with Photos &amp; Videos
-              </h1>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-[#8A6D32] font-semibold">
+                  {editingProductId ? 'Admin / Edit Product' : 'Admin / New Product'}
+                </p>
+                <h1 className="text-2xl font-semibold text-[#0F1D32] mt-1">
+                  {editingProductId
+                    ? `Edit Product: ${prodName || 'Item'}`
+                    : 'Add Product with Photos & Videos'}
+                </h1>
+              </div>
+              {editingProductId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetProductForm();
+                    onTabChange('products');
+                  }}
+                  className="px-3.5 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] hover:bg-[#F7F5EE] cursor-pointer"
+                >
+                  Back to Products
+                </button>
+              )}
             </div>
 
             <form
@@ -1911,10 +2188,10 @@ export function AdminPanel({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="prod-price" className="block text-xs font-medium text-[#3E4756] mb-1.5">
-                    Price (₹) *
+                    Selling Price (₹) *
                   </label>
                   <input
                     id="prod-price"
@@ -1927,6 +2204,25 @@ export function AdminPanel({
                   />
                   {prodErrors.price && (
                     <p className="mt-1 text-xs text-[#B91C1C]">{prodErrors.price}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="prod-discount" className="block text-xs font-medium text-[#3E4756] mb-1.5">
+                    Discount % (e.g. 80 or 90)
+                  </label>
+                  <input
+                    id="prod-discount"
+                    type="number"
+                    min="0"
+                    max="99"
+                    value={prodDiscountPercent}
+                    onChange={(e) => setProdDiscountPercent(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] bg-white focus:outline-none focus:border-[#0F1D32]"
+                  />
+                  {prodErrors.discountPercent && (
+                    <p className="mt-1 text-xs text-[#B91C1C]">{prodErrors.discountPercent}</p>
                   )}
                 </div>
 
@@ -1946,6 +2242,40 @@ export function AdminPanel({
                     <p className="mt-1 text-xs text-[#B91C1C]">{prodErrors.stock}</p>
                   )}
                 </div>
+              </div>
+
+              <div className="p-3.5 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] flex flex-wrap items-center justify-between gap-3">
+                <label className="inline-flex items-center gap-2.5 text-sm font-medium text-[#0F1D32] cursor-pointer">
+                  <input
+                    id="prod-pinned"
+                    type="checkbox"
+                    checked={prodPinned}
+                    onChange={(e) => setProdPinned(e.target.checked)}
+                    className="w-4 h-4 accent-[#0F1D32] rounded cursor-pointer"
+                  />
+                  <span className="inline-flex items-center gap-1.5">
+                    <Pin className="w-4 h-4 text-[#8A6D32]" />
+                    <span>Pin this product to the top of All &amp; Catalog</span>
+                  </span>
+                </label>
+
+                {Number(prodPrice) > 0 && normalizeDiscountPercent(prodDiscountPercent) > 0 && (
+                  <span className="text-xs font-mono text-[#3E4756]">
+                    Preview:{' '}
+                    <strong className="text-[#0F1D32]">{formatINR(Number(prodPrice))}</strong>{' '}
+                    <span className="line-through">
+                      {formatINR(
+                        calculateOriginalMrp(
+                          Number(prodPrice),
+                          normalizeDiscountPercent(prodDiscountPercent),
+                        ) || 0,
+                      )}
+                    </span>{' '}
+                    <strong className="text-[#B91C1C]">
+                      ({normalizeDiscountPercent(prodDiscountPercent)}% OFF)
+                    </strong>
+                  </span>
+                )}
               </div>
 
               <div>
@@ -2083,7 +2413,10 @@ export function AdminPanel({
               <div className="pt-3 border-t border-[#DED8C8] flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => onTabChange('products')}
+                  onClick={() => {
+                    resetProductForm();
+                    onTabChange('products');
+                  }}
                   className="px-4 py-2.5 text-sm font-medium rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] hover:bg-[#F7F5EE] cursor-pointer"
                 >
                   Cancel
@@ -2093,7 +2426,13 @@ export function AdminPanel({
                   disabled={prodSaving || uploadingMedia}
                   className="px-5 py-2.5 text-sm font-semibold rounded-lg bg-[#C6A45C] text-[#0F1D32] hover:bg-[#B69249] disabled:opacity-50 transition-colors cursor-pointer"
                 >
-                  {prodSaving ? 'Publishing...' : 'Publish Product'}
+                  {prodSaving
+                    ? editingProductId
+                      ? 'Saving Changes...'
+                      : 'Publishing...'
+                    : editingProductId
+                      ? 'Save Product Changes'
+                      : 'Publish Product'}
                 </button>
               </div>
             </form>
@@ -2253,6 +2592,98 @@ export function AdminPanel({
                     onChange={(e) => setSetShippingFee(e.target.value)}
                     className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
+                </div>
+              </div>
+
+              {/* Editable Bottom Payment & Delivery Highlights */}
+              <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] space-y-4">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[#0F1D32]">
+                    Bottom Payment &amp; Delivery Highlights
+                  </h3>
+                  <p className="text-[11px] text-[#5C5852] mt-0.5">
+                    Customize the Cash on Delivery and Instant UPI Checkout text shown above the storefront footer.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2.5 p-3 rounded-lg bg-white border border-[#DED8C8]">
+                    <div>
+                      <label htmlFor="set-cod-eyebrow" className="block text-[11px] font-medium text-[#3E4756] mb-1">
+                        Section 1 Label
+                      </label>
+                      <input
+                        id="set-cod-eyebrow"
+                        type="text"
+                        value={setCodEyebrow}
+                        onChange={(e) => setSetCodEyebrow(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="set-cod-title" className="block text-[11px] font-medium text-[#3E4756] mb-1">
+                        Section 1 Heading
+                      </label>
+                      <input
+                        id="set-cod-title"
+                        type="text"
+                        value={setCodTitle}
+                        onChange={(e) => setSetCodTitle(e.target.value)}
+                        className="w-full px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="set-cod-desc" className="block text-[11px] font-medium text-[#3E4756] mb-1">
+                        Section 1 Description
+                      </label>
+                      <textarea
+                        id="set-cod-desc"
+                        rows={2}
+                        value={setCodDescription}
+                        onChange={(e) => setSetCodDescription(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 p-3 rounded-lg bg-white border border-[#DED8C8]">
+                    <div>
+                      <label htmlFor="set-upi-eyebrow" className="block text-[11px] font-medium text-[#3E4756] mb-1">
+                        Section 2 Label
+                      </label>
+                      <input
+                        id="set-upi-eyebrow"
+                        type="text"
+                        value={setUpiEyebrow}
+                        onChange={(e) => setSetUpiEyebrow(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="set-upi-title" className="block text-[11px] font-medium text-[#3E4756] mb-1">
+                        Section 2 Heading
+                      </label>
+                      <input
+                        id="set-upi-title"
+                        type="text"
+                        value={setUpiTitle}
+                        onChange={(e) => setSetUpiTitle(e.target.value)}
+                        className="w-full px-3 py-2 text-xs font-medium rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="set-upi-desc" className="block text-[11px] font-medium text-[#3E4756] mb-1">
+                        Section 2 Description ({'{upiId}'} auto-fills UPI ID)
+                      </label>
+                      <textarea
+                        id="set-upi-desc"
+                        rows={2}
+                        value={setUpiDescription}
+                        onChange={(e) => setSetUpiDescription(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

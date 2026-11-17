@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Check, Film, Minus, Plus, ShoppingBag, X, Zap } from 'lucide-react';
-import { formatINR, type Product } from '../utils/storeLogic';
+import {
+  calculateOriginalMrp,
+  formatINR,
+  normalizeDiscountPercent,
+  type Product,
+} from '../utils/storeLogic';
 import { MediaRenderer } from './MediaRenderer';
 
 interface ProductDetailModalProps {
@@ -40,6 +45,8 @@ export function ProductDetailModal({
   const mediaList = product.media.length > 0 ? product.media : [];
   const activeMedia = mediaList[activeMediaIndex] || mediaList[0];
   const outOfStock = product.stock <= 0;
+  const discountPct = normalizeDiscountPercent(product.discountPercent);
+  const originalMrp = calculateOriginalMrp(product.price, discountPct);
 
   const handleAdd = () => {
     if (outOfStock) return;
@@ -50,14 +57,14 @@ export function ProductDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#091322]/70 backdrop-blur-xs p-4 sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#091322]/70 backdrop-blur-xs p-4 sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="pdp-title"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl bg-white border border-[#DED8C8] rounded-xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col md:flex-row"
+        className="relative w-full max-w-4xl bg-white border border-[#DED8C8] rounded-xl overflow-y-auto md:overflow-hidden overscroll-contain shadow-2xl max-h-[90vh] flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -123,7 +130,7 @@ export function ProductDetailModal({
         </div>
 
         {/* Right Contiguous Purchase Module */}
-        <div className="w-full md:w-[46%] p-6 sm:p-8 flex flex-col justify-between overflow-y-auto">
+        <div className="w-full md:w-[46%] p-6 sm:p-8 flex flex-col justify-between md:overflow-y-auto overscroll-contain">
           <div>
             <div className="flex items-center gap-2 text-xs text-[#8A6D32] uppercase tracking-wider font-semibold">
               <span>{product.category}</span>
@@ -140,9 +147,21 @@ export function ProductDetailModal({
               {product.name}
             </h2>
 
-            <p className="mt-3 text-2xl font-mono font-semibold text-[#0F1D32] tabular-nums">
-              {formatINR(product.price)}
-            </p>
+            <div className="mt-3 flex flex-wrap items-baseline gap-2.5">
+              <p className="text-2xl font-mono font-semibold text-[#0F1D32] tabular-nums">
+                {formatINR(product.price)}
+              </p>
+              {originalMrp && discountPct > 0 && (
+                <>
+                  <span className="text-sm font-mono text-[#5C5852] line-through tabular-nums">
+                    {formatINR(originalMrp)}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-[#B91C1C] text-white text-xs font-bold">
+                    {discountPct}% OFF
+                  </span>
+                </>
+              )}
+            </div>
 
             <p className="mt-4 text-sm sm:text-base text-[#3E4756] leading-relaxed">
               {product.description}

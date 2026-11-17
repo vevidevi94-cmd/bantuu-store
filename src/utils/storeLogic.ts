@@ -16,6 +16,9 @@ export interface Product {
   description: string;
   media: ProductMedia[];
   featured?: boolean;
+  pinned?: boolean;
+  pinnedAt?: string;
+  discountPercent?: number;
   createdAt: string;
 }
 
@@ -61,6 +64,17 @@ export interface Order {
 
 export const DEFAULT_STORE_HOURS = 'Store open at 6:00 am close at 8:30 pm';
 
+export const DEFAULT_PROMISE_COPY = {
+  codEyebrow: '01. Cash on Delivery',
+  codTitle: 'Pay when your parcel arrives',
+  codDescription:
+    'Select Cash on Delivery at checkout for doorstep cash payment across serviceable Indian pincodes.',
+  upiEyebrow: '02. Instant UPI Checkout',
+  upiTitle: 'Direct transfer via any UPI app',
+  upiDescription:
+    'Pay via Google Pay, PhonePe, Paytm, or BHIM directly to {upiId} and attach your UTR reference.',
+};
+
 export interface StoreSettings {
   storeName: string;
   storeHours?: string;
@@ -70,6 +84,12 @@ export interface StoreSettings {
   freeShippingThreshold: number;
   shippingFee: number;
   firebaseRtdbUrl?: string;
+  codEyebrow?: string;
+  codTitle?: string;
+  codDescription?: string;
+  upiEyebrow?: string;
+  upiTitle?: string;
+  upiDescription?: string;
 }
 
 export interface CheckoutFormInput {
@@ -90,6 +110,8 @@ export interface ProductFormInput {
   stock: string | number;
   description: string;
   media: ProductMedia[];
+  discountPercent?: string | number;
+  pinned?: boolean;
 }
 
 export function formatINR(amount: number): string {
@@ -225,7 +247,43 @@ export function validateProductForm(input: ProductFormInput): Record<string, str
     errors.media = 'Add at least one photo or video for this product.';
   }
 
+  if (input.discountPercent !== undefined && input.discountPercent !== '') {
+    const pct = Number(input.discountPercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 99) {
+      errors.discountPercent = 'Discount % must be between 0 and 99.';
+    }
+  }
+
   return errors;
+}
+
+export function normalizeDiscountPercent(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  return Math.min(99, Math.round(num));
+}
+
+export function calculateOriginalMrp(price: number, discountPercent?: number): number | null {
+  const pct = normalizeDiscountPercent(discountPercent);
+  if (pct <= 0 || price <= 0) return null;
+  const mrp = Math.round(price / (1 - pct / 100));
+  return mrp > price ? mrp : null;
+}
+
+export function sortProductsWithPinned(products: Product[]): Product[] {
+  return [...products].sort((a, b) => {
+    const aPinned = Boolean(a.pinned);
+    const bPinned = Boolean(b.pinned);
+    if (aPinned !== bPinned) {
+      return aPinned ? -1 : 1;
+    }
+    if (aPinned && bPinned) {
+      const ta = a.pinnedAt ? Date.parse(a.pinnedAt) : 0;
+      const tb = b.pinnedAt ? Date.parse(b.pinnedAt) : 0;
+      if (ta !== tb) return tb - ta;
+    }
+    return 0;
+  });
 }
 
 export function buildUpiPaymentUri(
@@ -262,7 +320,7 @@ export function buildPhonePePaymentUri(
 
 export function filterProducts(products: Product[], category: string, query: string): Product[] {
   const normalizedQuery = query.trim().toLowerCase();
-  return products.filter((product) => {
+  const matched = products.filter((product) => {
     const matchesCategory = category === 'All' || product.category === category;
     if (!matchesCategory) return false;
     if (!normalizedQuery) return true;
@@ -272,6 +330,7 @@ export function filterProducts(products: Product[], category: string, query: str
       product.description.toLowerCase().includes(normalizedQuery)
     );
   });
+  return sortProductsWithPinned(matched);
 }
 
 export function filterOrders(

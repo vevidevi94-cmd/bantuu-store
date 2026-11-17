@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import QRCode from 'qrcode';
 import {
   Banknote,
   Check,
@@ -112,6 +113,21 @@ export function CheckoutModal({
   const [savingQr, setSavingQr] = useState(false);
   const [qrStatusMsg, setQrStatusMsg] = useState('');
   const [isQrZoomOpen, setIsQrZoomOpen] = useState(false);
+  const [dynamicQrDataUrl, setDynamicQrDataUrl] = useState('');
+  const upiPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const totals = calculateCartTotals(
+    items,
+    settings.freeShippingThreshold,
+    settings.shippingFee,
+  );
+  const safePayableAmount = Math.max(1, Math.round(totals.total));
+  const upiUri = buildUpiPaymentUri(
+    settings.upiId,
+    settings.merchantName,
+    totals.total,
+    `${settings.storeName} Order`,
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -124,6 +140,29 @@ export function CheckoutModal({
     setQrStatusMsg('');
     setIsQrZoomOpen(false);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    QRCode.toDataURL(upiUri, {
+      width: 640,
+      margin: 2,
+      color: { dark: '#0F1D32', light: '#FFFFFF' },
+      errorCorrectionLevel: 'M',
+    })
+      .then((url) => {
+        if (!cancelled) {
+          setDynamicQrDataUrl(url);
+          setQrLoadError(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDynamicQrDataUrl('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, upiUri]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -140,19 +179,15 @@ export function CheckoutModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, isQrZoomOpen, onClose]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || paymentMethod !== 'UPI') return;
+    const timer = window.setTimeout(() => {
+      upiPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, paymentMethod]);
 
-  const totals = calculateCartTotals(
-    items,
-    settings.freeShippingThreshold,
-    settings.shippingFee,
-  );
-  const upiUri = buildUpiPaymentUri(
-    settings.upiId,
-    settings.merchantName,
-    totals.total,
-    `${settings.storeName} Order`,
-  );
+  if (!isOpen) return null;
 
   const handleCopyUpi = async () => {
     try {
@@ -167,7 +202,8 @@ export function CheckoutModal({
   const handleSaveQr = async () => {
     setSavingQr(true);
     setQrStatusMsg('');
-    const downloadEndpoint = '/api/upi-qr/download';
+    const downloadEndpoint = `/api/upi-qr/download?amount=${safePayableAmount}`;
+    const qrFileName = `bantuu-store-upi-qr-rs${safePayableAmount}.png`;
     const isWebView =
       typeof navigator !== 'undefined' &&
       /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
@@ -179,7 +215,7 @@ export function CheckoutModal({
       if (typeof win.Android?.downloadFile === 'function') {
         win.Android.downloadFile(
           `${window.location.origin}${downloadEndpoint}`,
-          'bantuu-store-upi-qr.jpg',
+          qrFileName,
         );
         setQrStatusMsg('QR download started via app.');
         return;
@@ -189,7 +225,7 @@ export function CheckoutModal({
         // Android WebView DownloadManager requires a real HTTP attachment URL (blob: URLs fail)
         const link = document.createElement('a');
         link.href = downloadEndpoint;
-        link.download = 'bantuu-store-upi-qr.jpg';
+        link.download = qrFileName;
         link.rel = 'noopener';
         document.body.appendChild(link);
         link.click();
@@ -214,16 +250,16 @@ export function CheckoutModal({
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = 'bantuu-store-upi-qr.jpg';
+      link.download = qrFileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 2500);
-      setQrStatusMsg('QR code saved to your Downloads.');
+      setQrStatusMsg(`QR code (${formatINR(totals.total)}) saved to your Downloads.`);
     } catch {
       const link = document.createElement('a');
       link.href = downloadEndpoint;
-      link.download = 'bantuu-store-upi-qr.jpg';
+      link.download = qrFileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -235,12 +271,14 @@ export function CheckoutModal({
 
   const handleShareQr = async () => {
     setQrStatusMsg('');
+    const downloadEndpoint = `/api/upi-qr/download?amount=${safePayableAmount}`;
+    const qrFileName = `bantuu-store-upi-qr-rs${safePayableAmount}.png`;
     try {
-      const res = await fetch('/api/upi-qr/download');
+      const res = await fetch(downloadEndpoint);
       if (res.ok) {
         const blob = await res.blob();
-        const file = new File([blob], 'bantuu-store-upi-qr.jpg', {
-          type: blob.type || 'image/jpeg',
+        const file = new File([blob], qrFileName, {
+          type: blob.type || 'image/png',
         });
         if (
           typeof navigator !== 'undefined' &&
@@ -341,7 +379,7 @@ export function CheckoutModal({
         className="w-full max-w-4xl bg-white border border-[#DED8C8] rounded-xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 bg-[#0F1D32] text-[#F7F5EE] border-b border-[#223654] flex items-center justify-between">
+        <div className="px-6 py-4 bg-[#0F1D32] text-[#F7F5EE] border-b border-[#223654] flex items-center justify-between shrink-0">
           <div>
             <p className="text-xs text-[#C6A45C] uppercase tracking-wider font-medium">
               {confirmedOrder ? 'Order Confirmation' : modeLabel}
@@ -361,7 +399,7 @@ export function CheckoutModal({
         </div>
 
         {confirmedOrder ? (
-          <div className="p-6 sm:p-8 overflow-y-auto space-y-6">
+          <div className="p-6 sm:p-8 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-6">
             <div className="flex items-start gap-4 pb-6 border-b border-[#DED8C8]">
               <div className="w-11 h-11 rounded-full bg-[#0F1D32] text-[#C6A45C] flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-6 h-6" />
@@ -451,7 +489,7 @@ export function CheckoutModal({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12">
+          <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto overscroll-contain grid grid-cols-1 lg:grid-cols-12">
             {/* Left Form */}
             <div className="lg:col-span-7 p-6 space-y-6 border-b lg:border-b-0 lg:border-r border-[#DED8C8]">
               {serverError && (
@@ -614,12 +652,16 @@ export function CheckoutModal({
                     in cash or doorstep QR scan at delivery time. No advance fee required.
                   </div>
                 ) : (
-                  <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] space-y-4">
+                  <div
+                    ref={upiPanelRef}
+                    className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] space-y-4"
+                  >
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                       {(() => {
-                        const qrUrl = settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg';
-                        const isLegacyFullScreen = qrUrl.includes('47084_35196505');
-                        if (!qrUrl || qrLoadError) {
+                        const fallbackQrUrl = settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg';
+                        const activeQrSrc = dynamicQrDataUrl || fallbackQrUrl;
+                        const isDynamicQr = Boolean(dynamicQrDataUrl);
+                        if (!activeQrSrc || qrLoadError) {
                           return <DeterministicUpiQr seed={upiUri} />;
                         }
                         return (
@@ -627,24 +669,25 @@ export function CheckoutModal({
                             type="button"
                             onClick={() => setIsQrZoomOpen(true)}
                             aria-label="Enlarge UPI QR code"
-                            className={`relative group w-44 h-44 sm:w-48 sm:h-48 rounded-xl overflow-hidden border border-[#DED8C8] shrink-0 cursor-pointer ${
-                              isLegacyFullScreen ? 'bg-white' : 'bg-black'
+                            className={`group w-44 sm:w-48 rounded-xl overflow-hidden border border-[#DED8C8] p-2 flex flex-col items-center shrink-0 cursor-pointer ${
+                              isDynamicQr ? 'bg-white' : 'bg-black'
                             }`}
                           >
-                            <img
-                              src={qrUrl}
-                              alt={`Scan to pay ${settings.upiId} via UPI`}
-                              onError={() => setQrLoadError(true)}
-                              className={
-                                isLegacyFullScreen
-                                  ? 'w-full h-full object-cover object-[50%_52%] scale-[1.28]'
-                                  : 'w-full h-full object-contain p-1'
-                              }
-                            />
-                            <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0F1D32]/90 text-[#F7F5EE] text-[10px] font-medium">
-                              <Maximize2 className="w-3 h-3 text-[#C6A45C]" />
-                              <span>Zoom</span>
+                            <span className="w-full flex items-center justify-between gap-2 pb-1.5">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#0F1D32] text-[#C6A45C] font-mono text-[10px] font-bold">
+                                {formatINR(totals.total)}
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0F1D32] text-[#F7F5EE] text-[10px] font-medium">
+                                <Maximize2 className="w-3 h-3 text-[#C6A45C]" />
+                                <span>Zoom</span>
+                              </span>
                             </span>
+                            <img
+                              src={activeQrSrc}
+                              alt={`Scan to pay ${formatINR(totals.total)} to ${settings.upiId} via UPI`}
+                              onError={() => setQrLoadError(true)}
+                              className="w-40 h-40 sm:w-44 sm:h-44 object-contain rounded-lg bg-white"
+                            />
                           </button>
                         );
                       })()}
@@ -837,10 +880,10 @@ export function CheckoutModal({
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="bg-black rounded-xl overflow-hidden border border-[#223654] p-2">
+            <div className="bg-white rounded-xl overflow-hidden border border-[#223654] p-2">
               <img
-                src={settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
-                alt={`Full screen UPI QR for ${settings.upiId}`}
+                src={dynamicQrDataUrl || settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
+                alt={`Full screen UPI QR for ${formatINR(totals.total)} to ${settings.upiId}`}
                 className="w-full h-auto max-h-[60vh] object-contain mx-auto"
               />
             </div>

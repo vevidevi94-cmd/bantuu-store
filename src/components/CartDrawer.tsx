@@ -51,7 +51,7 @@ export function CartDrawer({
         className="w-full max-w-md bg-white h-full border-l border-[#DED8C8] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-5 bg-[#0F1D32] text-[#F7F5EE] border-b border-[#223654] flex items-center justify-between">
+        <div className="px-6 py-5 bg-[#0F1D32] text-[#F7F5EE] border-b border-[#223654] flex items-center justify-between shrink-0">
           <div>
             <h2 className="text-lg font-semibold text-[#F7F5EE]">Your Shopping Bag</h2>
             <p className="text-xs text-[#C6A45C] mt-0.5 tabular-nums">
@@ -76,7 +76,7 @@ export function CartDrawer({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 divide-y divide-[#DED8C8]">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5 divide-y divide-[#DED8C8]">
           {items.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center py-16">
               <div className="w-12 h-12 rounded-full bg-[#0F1D32] text-[#C6A45C] flex items-center justify-center mb-4">

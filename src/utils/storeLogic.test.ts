@@ -4,6 +4,7 @@ import {
   buildPhonePePaymentUri,
   buildUpiPaymentUri,
   calculateCartTotals,
+  calculateOriginalMrp,
   DEFAULT_STORE_HOURS,
   filterOrders,
   filterProducts,
@@ -11,9 +12,11 @@ import {
   formatOrderDateTime,
   inferMediaTypeFromUrl,
   normalizeCategoryName,
+  normalizeDiscountPercent,
   normalizeFirebaseRtdbUrl,
   normalizeRtdbMap,
   sanitizeCartWithCatalog,
+  sortProductsWithPinned,
   validateCategoryName,
   validateCheckoutForm,
   validateProductForm,
@@ -308,5 +311,63 @@ test('validateCategoryName enforces uniqueness, length, and reserved All check',
 test('DEFAULT_STORE_HOURS provides expected default store timing copy', () => {
   assert.equal(DEFAULT_STORE_HOURS, 'Store open at 6:00 am close at 8:30 pm');
 });
+
+test('sortProductsWithPinned places all pinned products at the top', () => {
+  const sample: Product[] = [
+    {
+      id: 'p-1',
+      name: 'Regular Item',
+      category: 'Snacks',
+      price: 50,
+      stock: 10,
+      description: 'Regular snack item.',
+      media: [{ id: 'm1', type: 'image', url: '/1.jpg' }],
+      createdAt: '2026-11-15T10:00:00.000Z',
+    },
+    {
+      id: 'p-2',
+      name: 'First Pinned',
+      category: 'Snacks',
+      price: 20,
+      stock: 5,
+      description: 'First pinned snack.',
+      media: [{ id: 'm2', type: 'image', url: '/2.jpg' }],
+      pinned: true,
+      pinnedAt: '2026-11-16T08:00:00.000Z',
+      createdAt: '2026-11-15T09:00:00.000Z',
+    },
+    {
+      id: 'p-3',
+      name: 'Second Pinned',
+      category: 'Snacks',
+      price: 40,
+      stock: 8,
+      description: 'Latest pinned snack.',
+      media: [{ id: 'm3', type: 'image', url: '/3.jpg' }],
+      pinned: true,
+      pinnedAt: '2026-11-16T09:00:00.000Z',
+      createdAt: '2026-11-15T08:00:00.000Z',
+    },
+  ];
+  const sorted = sortProductsWithPinned(sample);
+  assert.deepEqual(
+    sorted.map((p) => p.id),
+    ['p-3', 'p-2', 'p-1'],
+  );
+  const filteredAll = filterProducts(sample, 'All', '');
+  assert.equal(filteredAll[0].id, 'p-3');
+  assert.equal(filteredAll[1].id, 'p-2');
+});
+
+test('discount normalization and MRP calculation handle 80% and 90% accurately', () => {
+  assert.equal(normalizeDiscountPercent(80), 80);
+  assert.equal(normalizeDiscountPercent(90), 90);
+  assert.equal(normalizeDiscountPercent(150), 99);
+  assert.equal(normalizeDiscountPercent(-5), 0);
+  assert.equal(calculateOriginalMrp(45, 80), 225);
+  assert.equal(calculateOriginalMrp(45, 90), 450);
+  assert.equal(calculateOriginalMrp(45, 0), null);
+});
+
 
 

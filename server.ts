@@ -7,8 +7,8 @@ import { syncWithRtdbOnBootOrRefresh } from './server/storeDb.js';
 const PORT = 3000;
 
 async function startServer() {
-  // Initial sync with Firebase Realtime Database (seeds RTDB if null, or pulls live updates)
-  await syncWithRtdbOnBootOrRefresh().catch((err) => {
+  // Run initial Firebase Realtime Database sync in background so port 3000 binds immediately
+  syncWithRtdbOnBootOrRefresh().catch((err) => {
     console.warn('Initial Firebase RTDB sync warning:', err);
   });
 

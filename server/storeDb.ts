@@ -4,8 +4,10 @@ import crypto from 'node:crypto';
 import type { Order, OrderStatus, Product, StoreSettings } from '../src/utils/storeLogic.js';
 import {
   calculateCartTotals,
+  DEFAULT_PROMISE_COPY,
   DEFAULT_STORE_HOURS,
   normalizeCategoryName,
+  normalizeDiscountPercent,
   normalizeFirebaseRtdbUrl,
   validateCategoryName,
 } from '../src/utils/storeLogic.js';
@@ -55,6 +57,7 @@ const SEED_DATA: StoreDatabase = {
     freeShippingThreshold: 999,
     shippingFee: 79,
     firebaseRtdbUrl: DEFAULT_RTDB_URL,
+    ...DEFAULT_PROMISE_COPY,
   },
   categories: DEFAULT_CATEGORIES,
   nextOrderSeq: 1003,
@@ -235,6 +238,12 @@ function ensureDbInitialized(): StoreDatabase {
   if (!parsed.settings.storeHours || !parsed.settings.storeHours.trim()) {
     parsed.settings.storeHours = DEFAULT_STORE_HOURS;
   }
+  parsed.settings.codEyebrow ||= DEFAULT_PROMISE_COPY.codEyebrow;
+  parsed.settings.codTitle ||= DEFAULT_PROMISE_COPY.codTitle;
+  parsed.settings.codDescription ||= DEFAULT_PROMISE_COPY.codDescription;
+  parsed.settings.upiEyebrow ||= DEFAULT_PROMISE_COPY.upiEyebrow;
+  parsed.settings.upiTitle ||= DEFAULT_PROMISE_COPY.upiTitle;
+  parsed.settings.upiDescription ||= DEFAULT_PROMISE_COPY.upiDescription;
   if (!parsed.settings.upiId || parsed.settings.upiId === 'bantustore@upi') {
     parsed.settings.upiId = DEFAULT_UPI_ID;
   }
@@ -406,6 +415,22 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
       ...remote.settings,
       storeHours:
         remote.settings.storeHours?.trim() || db.settings.storeHours || DEFAULT_STORE_HOURS,
+      codEyebrow:
+        remote.settings.codEyebrow?.trim() || db.settings.codEyebrow || DEFAULT_PROMISE_COPY.codEyebrow,
+      codTitle:
+        remote.settings.codTitle?.trim() || db.settings.codTitle || DEFAULT_PROMISE_COPY.codTitle,
+      codDescription:
+        remote.settings.codDescription?.trim() ||
+        db.settings.codDescription ||
+        DEFAULT_PROMISE_COPY.codDescription,
+      upiEyebrow:
+        remote.settings.upiEyebrow?.trim() || db.settings.upiEyebrow || DEFAULT_PROMISE_COPY.upiEyebrow,
+      upiTitle:
+        remote.settings.upiTitle?.trim() || db.settings.upiTitle || DEFAULT_PROMISE_COPY.upiTitle,
+      upiDescription:
+        remote.settings.upiDescription?.trim() ||
+        db.settings.upiDescription ||
+        DEFAULT_PROMISE_COPY.upiDescription,
       upiId:
         !remote.settings.upiId || remote.settings.upiId === 'bantustore@upi'
           ? DEFAULT_UPI_ID
@@ -455,10 +480,13 @@ export async function addProductRecord(input: {
   description: string;
   media: Product['media'];
   featured?: boolean;
+  pinned?: boolean;
+  discountPercent?: number;
 }): Promise<Product> {
   return runMutation(async () => {
     await ensureColdStartSync();
     const db = ensureDbInitialized();
+    const isPinned = Boolean(input.pinned);
     const product: Product = {
       id: `prod-${crypto.randomUUID().slice(0, 8)}`,
       name: input.name.trim(),
@@ -468,6 +496,9 @@ export async function addProductRecord(input: {
       description: input.description.trim(),
       media: input.media,
       featured: Boolean(input.featured),
+      pinned: isPinned,
+      pinnedAt: isPinned ? new Date().toISOString() : undefined,
+      discountPercent: normalizeDiscountPercent(input.discountPercent),
       createdAt: new Date().toISOString(),
     };
     db.products.unshift(product);
@@ -484,6 +515,76 @@ export async function addProductRecord(input: {
       await pushCategoriesToRtdb(rtdbUrl, db.categories);
     }
     return product;
+  });
+}
+
+export async function updateProductRecord(
+  productId: string,
+  patch: Partial<{
+    name: string;
+    category: string;
+    price: number;
+    stock: number;
+    description: string;
+    media: Product['media'];
+    featured: boolean;
+    pinned: boolean;
+    discountPercent: number;
+  }>,
+): Promise<Product | null> {
+  return runMutation(async () => {
+    await ensureColdStartSync();
+    const db = ensureDbInitialized();
+    const idx = db.products.findIndex((p) => p.id === productId);
+    if (idx === -1) return null;
+
+    const existing = db.products[idx];
+    const nextPinned = patch.pinned !== undefined ? Boolean(patch.pinned) : Boolean(existing.pinned);
+    let nextPinnedAt = existing.pinnedAt;
+    if (nextPinned && !existing.pinned) {
+      nextPinnedAt = new Date().toISOString();
+    } else if (!nextPinned) {
+      nextPinnedAt = undefined;
+    }
+
+    const updated: Product = {
+      ...existing,
+      name: patch.name !== undefined ? patch.name.trim() : existing.name,
+      category: patch.category !== undefined ? patch.category.trim() : existing.category,
+      price:
+        patch.price !== undefined && Number.isFinite(Number(patch.price))
+          ? Math.round(Number(patch.price))
+          : existing.price,
+      stock:
+        patch.stock !== undefined && Number.isFinite(Number(patch.stock))
+          ? Math.max(0, Math.floor(Number(patch.stock)))
+          : existing.stock,
+      description:
+        patch.description !== undefined ? patch.description.trim() : existing.description,
+      media: Array.isArray(patch.media) ? patch.media : existing.media,
+      featured: patch.featured !== undefined ? Boolean(patch.featured) : existing.featured,
+      pinned: nextPinned,
+      pinnedAt: nextPinnedAt,
+      discountPercent:
+        patch.discountPercent !== undefined
+          ? normalizeDiscountPercent(patch.discountPercent)
+          : normalizeDiscountPercent(existing.discountPercent),
+    };
+
+    db.products[idx] = updated;
+    let categoriesChanged = false;
+    if (!db.categories.some((c) => c.toLowerCase() === updated.category.toLowerCase())) {
+      db.categories.push(updated.category);
+      categoriesChanged = true;
+    }
+    saveDb(db);
+
+    const rtdbUrl = db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL;
+    await pushProductToRtdb(rtdbUrl, updated);
+    if (categoriesChanged) {
+      await pushCategoriesToRtdb(rtdbUrl, db.categories);
+    }
+    return updated;
   });
 }
 
@@ -646,6 +747,30 @@ export async function updateStoreSettingsRecord(
         patch.storeHours !== undefined
           ? patch.storeHours.trim() || DEFAULT_STORE_HOURS
           : db.settings.storeHours || DEFAULT_STORE_HOURS,
+      codEyebrow:
+        patch.codEyebrow !== undefined
+          ? patch.codEyebrow.trim() || DEFAULT_PROMISE_COPY.codEyebrow
+          : db.settings.codEyebrow || DEFAULT_PROMISE_COPY.codEyebrow,
+      codTitle:
+        patch.codTitle !== undefined
+          ? patch.codTitle.trim() || DEFAULT_PROMISE_COPY.codTitle
+          : db.settings.codTitle || DEFAULT_PROMISE_COPY.codTitle,
+      codDescription:
+        patch.codDescription !== undefined
+          ? patch.codDescription.trim() || DEFAULT_PROMISE_COPY.codDescription
+          : db.settings.codDescription || DEFAULT_PROMISE_COPY.codDescription,
+      upiEyebrow:
+        patch.upiEyebrow !== undefined
+          ? patch.upiEyebrow.trim() || DEFAULT_PROMISE_COPY.upiEyebrow
+          : db.settings.upiEyebrow || DEFAULT_PROMISE_COPY.upiEyebrow,
+      upiTitle:
+        patch.upiTitle !== undefined
+          ? patch.upiTitle.trim() || DEFAULT_PROMISE_COPY.upiTitle
+          : db.settings.upiTitle || DEFAULT_PROMISE_COPY.upiTitle,
+      upiDescription:
+        patch.upiDescription !== undefined
+          ? patch.upiDescription.trim() || DEFAULT_PROMISE_COPY.upiDescription
+          : db.settings.upiDescription || DEFAULT_PROMISE_COPY.upiDescription,
       upiId: patch.upiId?.trim() || db.settings.upiId,
       upiQrUrl:
         patch.upiQrUrl !== undefined
