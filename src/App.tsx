@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   Check,
   ClipboardList,
+  Copy,
   Download,
   Film,
   Pin,
   Search,
   Send,
   ShoppingBag,
+  X,
   Zap,
 } from 'lucide-react';
 import { AdminPanel, type AdminTab } from './components/AdminPanel';
@@ -177,6 +179,12 @@ export default function App() {
     clearCartOnSuccess: false,
   });
   const [isTrackOpen, setIsTrackOpen] = useState(false);
+  const [webViewLinkModal, setWebViewLinkModal] = useState<'telegram' | 'apk' | null>(null);
+  const [copiedSupportKey, setCopiedSupportKey] = useState<string | null>(null);
+
+  const isAndroidWebView =
+    typeof navigator !== 'undefined' &&
+    /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
 
   const hasActiveModal = Boolean(
     !(isAdminMode && isAdminAuthenticated) &&
@@ -184,7 +192,8 @@ export default function App() {
         isCartOpen ||
         checkoutState.isOpen ||
         isTrackOpen ||
-        isPasswordModalOpen),
+        isPasswordModalOpen ||
+        webViewLinkModal),
   );
   useScrollLock(hasActiveModal);
 
@@ -1272,6 +1281,29 @@ export default function App() {
               target="_blank"
               rel="external"
               aria-label="Download Bantuu Store APK"
+              onClick={(e) => {
+                if (!isAndroidWebView) return;
+                e.preventDefault();
+                const url =
+                  'https://github.com/banti194raj-svg/bantuustore/raw/refs/heads/main/bantuustore.apk';
+                const win = window as unknown as {
+                  AppInventor?: { setWebViewString?: (v: string) => void };
+                  Android?: { downloadFile?: (u: string, f: string) => void; openExternal?: (u: string) => void };
+                };
+                win.AppInventor?.setWebViewString?.(
+                  JSON.stringify({ action: 'download_apk', url }),
+                );
+                if (typeof win.Android?.downloadFile === 'function') {
+                  win.Android.downloadFile(url, 'bantuustore.apk');
+                  return;
+                }
+                if (typeof win.Android?.openExternal === 'function') {
+                  win.Android.openExternal(url);
+                  return;
+                }
+                setCopiedSupportKey(null);
+                setWebViewLinkModal('apk');
+              }}
               className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-[11px] sm:text-xs font-bold hover:bg-[#B69249] transition-colors whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5 shrink-0" />
@@ -1282,6 +1314,24 @@ export default function App() {
               target="_blank"
               rel="external"
               aria-label="Contact or Support on Telegram"
+              onClick={(e) => {
+                if (!isAndroidWebView) return;
+                e.preventDefault();
+                const url = 'https://t.me/Iamkillerb';
+                const win = window as unknown as {
+                  AppInventor?: { setWebViewString?: (v: string) => void };
+                  Android?: { openExternal?: (u: string) => void };
+                };
+                win.AppInventor?.setWebViewString?.(
+                  JSON.stringify({ action: 'open_external', url }),
+                );
+                if (typeof win.Android?.openExternal === 'function') {
+                  win.Android.openExternal(url);
+                  return;
+                }
+                setCopiedSupportKey(null);
+                setWebViewLinkModal('telegram');
+              }}
               className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-[11px] sm:text-xs font-semibold hover:bg-[#1F3659] hover:border-[#C6A45C]/50 transition-colors whitespace-nowrap"
             >
               <Send className="w-3.5 h-3.5 text-[#C6A45C] shrink-0" />
@@ -1332,6 +1382,147 @@ export default function App() {
         onClose={closePasswordModal}
         onSuccess={enterAdminMode}
       />
+
+      {webViewLinkModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#091322]/75 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            webViewLinkModal === 'telegram'
+              ? 'Telegram Contact Support'
+              : 'Download Bantuu Store APK'
+          }
+          onClick={() => setWebViewLinkModal(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white border border-[#DED8C8] rounded-xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 bg-[#0F1D32] text-[#F7F5EE] border-b border-[#223654] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {webViewLinkModal === 'telegram' ? (
+                  <Send className="w-4 h-4 text-[#C6A45C]" />
+                ) : (
+                  <Download className="w-4 h-4 text-[#C6A45C]" />
+                )}
+                <h2 className="text-sm font-semibold">
+                  {webViewLinkModal === 'telegram'
+                    ? 'Contact / Support on Telegram'
+                    : 'Download Bantuu Store APK'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWebViewLinkModal(null)}
+                aria-label="Close support dialog"
+                className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3.5 text-sm">
+              {webViewLinkModal === 'telegram' ? (
+                <>
+                  <p className="text-xs text-[#3E4756] leading-relaxed">
+                    In-app WebView blocks direct Telegram scheme redirects. Copy our username to message directly on Telegram, or open the link in Chrome:
+                  </p>
+                  <div className="p-3 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] flex items-center justify-between gap-2">
+                    <span className="font-mono font-bold text-[#0F1D32]">@Iamkillerb</span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText('@Iamkillerb');
+                          setCopiedSupportKey('username');
+                        } catch {
+                          // ignore clipboard errors
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0F1D32] text-[#F7F5EE] text-xs font-medium cursor-pointer"
+                    >
+                      {copiedSupportKey === 'username' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-[#C6A45C]" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#C6A45C]" />
+                          <span>Copy ID</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText('https://t.me/Iamkillerb');
+                          setCopiedSupportKey('tg-link');
+                        } catch {
+                          // ignore clipboard errors
+                        }
+                      }}
+                      className="w-full py-2.5 px-4 rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] text-xs font-semibold hover:bg-[#F7F5EE] cursor-pointer"
+                    >
+                      {copiedSupportKey === 'tg-link'
+                        ? 'Copied https://t.me/Iamkillerb'
+                        : 'Copy Support Link (https://t.me/Iamkillerb)'}
+                    </button>
+                    <a
+                      href="https://t.me/Iamkillerb"
+                      target="_blank"
+                      rel="external"
+                      className="w-full py-2.5 px-4 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-bold text-center"
+                    >
+                      Open Telegram Link
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-[#3E4756] leading-relaxed">
+                    Copy the direct APK link to download in Chrome if your app WebView pauses file downloads, or tap Open Download below:
+                  </p>
+                  <div className="p-2.5 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] text-[11px] font-mono text-[#0F1D32] break-all">
+                    https://github.com/banti194raj-svg/bantuustore/raw/refs/heads/main/bantuustore.apk
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            'https://github.com/banti194raj-svg/bantuustore/raw/refs/heads/main/bantuustore.apk',
+                          );
+                          setCopiedSupportKey('apk-link');
+                        } catch {
+                          // ignore clipboard errors
+                        }
+                      }}
+                      className="w-full py-2.5 px-4 rounded-lg border border-[#DED8C8] bg-white text-[#0F1D32] text-xs font-semibold hover:bg-[#F7F5EE] cursor-pointer"
+                    >
+                      {copiedSupportKey === 'apk-link'
+                        ? 'Copied APK Download Link'
+                        : 'Copy APK Download Link'}
+                    </button>
+                    <a
+                      href="https://github.com/banti194raj-svg/bantuustore/raw/refs/heads/main/bantuustore.apk"
+                      target="_blank"
+                      rel="external"
+                      className="w-full py-2.5 px-4 rounded-lg bg-[#C6A45C] text-[#0F1D32] text-xs font-bold text-center"
+                    >
+                      Open APK Download
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

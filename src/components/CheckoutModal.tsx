@@ -279,20 +279,38 @@ export function CheckoutModal({
   const handleShareQr = async () => {
     setQrStatusMsg('');
     const qrFileName = `bantuu-store-upi-qr-rs${safePayableAmount}.png`;
+    const fullDownloadUrl = `${window.location.origin}${qrDownloadEndpoint}`;
+    const fullShareUrl = `${window.location.origin}${qrShareEndpoint}`;
     try {
       const win = window as unknown as {
         Android?: {
           shareFile?: (url: string, text: string) => void;
           shareText?: (text: string) => void;
         };
+        AppInventor?: {
+          setWebViewString?: (value: string) => void;
+        };
       };
       if (typeof win.Android?.shareFile === 'function') {
         win.Android.shareFile(
-          `${window.location.origin}${qrDownloadEndpoint}`,
+          fullDownloadUrl,
           `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
         );
         setQrStatusMsg('Sharing QR via app...');
         return;
+      }
+
+      if (typeof win.AppInventor?.setWebViewString === 'function') {
+        win.AppInventor.setWebViewString(
+          JSON.stringify({
+            action: 'share_qr',
+            url: fullDownloadUrl,
+            shareUrl: fullShareUrl,
+            amount: safePayableAmount,
+            upiId: settings.upiId,
+            text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+          }),
+        );
       }
 
       if (canUseWebShareApi) {
@@ -315,7 +333,7 @@ export function CheckoutModal({
         await navigator.share({
           title: `${settings.storeName} UPI QR`,
           text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
-          url: `${window.location.origin}${qrShareEndpoint}`,
+          url: fullShareUrl,
         });
         setQrStatusMsg('QR link shared.');
         return;
@@ -325,7 +343,13 @@ export function CheckoutModal({
         return;
       }
     }
+
     setIsQrZoomOpen(true);
+    setQrStatusMsg(
+      isAndroidWebView
+        ? 'Take a screenshot of the QR below (or tap Save QR) and scan from Gallery in PhonePe / GPay.'
+        : 'Scan the zoomed QR or tap Save QR / Open Share Page.',
+    );
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -770,29 +794,14 @@ export function CheckoutModal({
                               <span>{savingQr ? 'Saving...' : 'Save QR'}</span>
                             </button>
                           )}
-                          {canUseWebShareApi ? (
-                            <button
-                              type="button"
-                              onClick={handleShareQr}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
-                              <span>Share QR</span>
-                            </button>
-                          ) : (
-                            <a
-                              href={qrShareEndpoint}
-                              target="_blank"
-                              rel="external"
-                              onClick={() =>
-                                setQrStatusMsg('Opening QR share screen in browser...')
-                              }
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
-                              <span>Share QR</span>
-                            </a>
-                          )}
+                          <button
+                            type="button"
+                            onClick={handleShareQr}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#DED8C8] bg-white text-xs font-medium text-[#0F1D32] hover:bg-[#ECE7DA] cursor-pointer"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-[#8A6D32]" />
+                            <span>Share QR</span>
+                          </button>
                         </div>
                         {qrStatusMsg && (
                           <p className="text-[11px] font-medium text-[#8A6D32]">{qrStatusMsg}</p>
@@ -971,6 +980,23 @@ export function CheckoutModal({
                   <span>Save QR</span>
                 </button>
               )}
+              <button
+                type="button"
+                onClick={handleCopyUpi}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs font-medium cursor-pointer"
+              >
+                {copiedUpi ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#C6A45C]" />
+                    <span>Copied UPI</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-[#C6A45C]" />
+                    <span>Copy UPI ID</span>
+                  </>
+                )}
+              </button>
               {canUseWebShareApi ? (
                 <button
                   type="button"
@@ -988,7 +1014,7 @@ export function CheckoutModal({
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#223654] bg-[#172A46] text-[#F7F5EE] text-xs font-medium cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5 text-[#C6A45C]" />
-                  <span>Share QR</span>
+                  <span>Open Share Page</span>
                 </a>
               )}
             </div>

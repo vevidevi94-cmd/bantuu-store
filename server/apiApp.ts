@@ -385,6 +385,7 @@ export function createApiApp(): Express {
     <button id="shareBtn" type="button" class="btn btn-primary">Share QR to UPI App</button>
     <a href="${dlSrc}" download="${fileName}" class="btn btn-gold">Save QR to Gallery</a>
     <button id="copyBtn" type="button" class="btn btn-light">Copy UPI ID</button>
+    <button id="backBtn" type="button" class="btn btn-light">← Back to Checkout</button>
     <p id="statusMsg" class="note">Tap Share QR to send this QR image directly to PhonePe, Google Pay, or Paytm, then enter your UTR in Bantuu Store.</p>
   </div>
   <script>
@@ -409,10 +410,10 @@ export function createApiApp(): Express {
           await navigator.share({ title: storeName + ' UPI QR', text: amountText, url: window.location.href });
           return;
         }
-        statusEl.textContent = 'Long-press the QR image or tap Save QR to Gallery, then scan in PhonePe/GPay.';
+        statusEl.textContent = 'Long-press the QR image or take a screenshot, then upload it in PhonePe / GPay / Paytm (Scan from Gallery).';
       } catch (e) {
         if (e && e.name === 'AbortError') return;
-        statusEl.textContent = 'Tap Save QR to Gallery or take a screenshot, then upload QR in your UPI app.';
+        statusEl.textContent = 'Take a screenshot of this QR code, then open PhonePe / GPay and upload from Gallery.';
       }
     }
 
@@ -422,6 +423,13 @@ export function createApiApp(): Express {
         await navigator.clipboard.writeText(upiId);
         this.textContent = 'Copied: ' + upiId;
       } catch (_) {}
+    });
+    document.getElementById('backBtn').addEventListener('click', function() {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = '/';
+      }
     });
   </script>
 </body>
