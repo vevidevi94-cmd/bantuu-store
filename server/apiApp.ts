@@ -35,6 +35,16 @@ import {
   validateProductForm,
   type OrderStatus,
 } from '../src/utils/storeLogic.js';
+import { isSafeTransactionId, type UpiPaymentStatus } from '../src/utils/upiPaymentLogic.js';
+import {
+  createDynamicUpiPayment,
+  getDynamicUpiPayment,
+  listRecentUpiPayments,
+  toPublicUpiPayment,
+  updateDynamicUpiPaymentStatus,
+  verifyTransactionStatusToken,
+  verifyWebhookSignature,
+} from './upiPayments.js';
 
 export function createApiApp(): Express {
   const app = express();
@@ -52,7 +62,14 @@ export function createApiApp(): Express {
     app.use('/src/assets', express.static(path.join(process.cwd(), 'src/assets')));
   }
 
-  app.use(express.json({ limit: '6mb' }));
+  app.use(
+    express.json({
+      limit: '6mb',
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: string }).rawBody = buf.toString('utf8');
+      },
+    }),
+  );
 
   // Admin auth trigger & session endpoints (no secrets shipped to client JS)
   app.post('/api/admin/trigger', (req, res) => {
@@ -697,6 +714,223 @@ export function createApiApp(): Express {
       products: result.products,
       rtdb: getRtdbSyncState(),
     });
+  });
+
+  // Dynamic UPI Payment Checkout API (Node.js + Firebase Realtime Database)
+  app.post('/api/upi-payments/create', async (req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const body = req.body || {};
+      const result = await createDynamicUpiPayment({
+        amount: body.amount,
+        note: body.note,
+        customerName: body.customerName,
+      });
+      if (!result.ok) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.status(201).json({
+        payment: result.payment,
+        qrCodeDataUrl: result.qrCodeDataUrl,
+        appLinks: result.appLinks,
+        statusToken: result.statusToken,
+        rtdbSynced: result.rtdbSynced,
+      });
+    } catch (err) {
+      console.error('Dynamic UPI payment creation error:', err);
+      res.status(500).json({ error: 'Could not generate dynamic UPI payment session.' });
+    }
+  });
+
+  app.get('/api/upi-payments', requireAdminMiddleware, async (_req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const payments = await listRecentUpiPayments(50);
+      res.json({ payments, rtdb: getRtdbSyncState() });
+    } catch {
+      res.status(500).json({ error: 'Could not fetch UPI payment records.' });
+    }
+  });
+
+  app.get('/api/upi-payments/:transactionId/status', async (req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const transactionId = String(req.params.transactionId || '').trim();
+      if (!isSafeTransactionId(transactionId)) {
+        res.status(400).json({ error: 'Invalid transactionId format.' });
+        return;
+      }
+
+      const stored = await getDynamicUpiPayment(transactionId);
+      if (!stored) {
+        res.status(404).json({ error: 'Transaction not found.' });
+        return;
+      }
+
+      const providedToken =
+        typeof req.headers['x-status-token'] === 'string'
+          ? req.headers['x-status-token']
+          : typeof req.query.token === 'string'
+            ? req.query.token
+            : undefined;
+      const authorized =
+        isRequestAdminAuthenticated(req) ||
+        verifyTransactionStatusToken(stored, providedToken);
+      if (!authorized) {
+        res.status(401).json({ error: 'Valid status token required to check payment status.' });
+        return;
+      }
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ payment: toPublicUpiPayment(stored), rtdb: getRtdbSyncState() });
+    } catch {
+      res.status(500).json({ error: 'Could not check payment status.' });
+    }
+  });
+
+  app.post('/api/upi-payments/webhook', async (req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const rawBody =
+        (req as express.Request & { rawBody?: string }).rawBody ||
+        JSON.stringify(req.body || {});
+      const sigHeader =
+        typeof req.headers['x-webhook-signature'] === 'string'
+          ? req.headers['x-webhook-signature']
+          : undefined;
+      const secretHeader =
+        typeof req.headers['x-webhook-secret'] === 'string'
+          ? req.headers['x-webhook-secret']
+          : undefined;
+
+      const authorized =
+        isRequestAdminAuthenticated(req) ||
+        verifyWebhookSignature(rawBody, sigHeader, secretHeader, process.env.UPI_WEBHOOK_SECRET);
+
+      if (!authorized) {
+        res.status(401).json({
+          error:
+            'Unauthorized webhook request. Provide valid X-Webhook-Signature / X-Webhook-Secret or Admin credentials.',
+        });
+        return;
+      }
+
+      const body = req.body || {};
+      const transactionId = String(body.transactionId || '').trim();
+      const rawStatus = String(body.status || 'Paid').trim();
+      const allowedStatuses: UpiPaymentStatus[] = ['Paid', 'Failed', 'Expired', 'Pending'];
+      if (!allowedStatuses.includes(rawStatus as UpiPaymentStatus)) {
+        res.status(400).json({ error: 'Invalid payment status value.' });
+        return;
+      }
+
+      const expectedAmount =
+        body.amount !== undefined && body.amount !== null && body.amount !== ''
+          ? Number(body.amount)
+          : undefined;
+
+      const updated = await updateDynamicUpiPaymentStatus({
+        transactionId,
+        status: rawStatus as UpiPaymentStatus,
+        utr: typeof body.utr === 'string' ? body.utr : undefined,
+        providerRef: typeof body.providerRef === 'string' ? body.providerRef : 'WEBHOOK',
+        expectedAmount,
+      });
+
+      if (!updated.ok) {
+        res.status(updated.statusCode).json({ error: updated.error });
+        return;
+      }
+
+      res.json({
+        received: true,
+        payment: updated.payment,
+        rtdbSynced: updated.rtdbSynced,
+      });
+    } catch {
+      res.status(500).json({ error: 'Webhook processing failed.' });
+    }
+  });
+
+  app.post('/api/upi-payments/:transactionId/confirm', async (req, res) => {
+    try {
+      await ensureColdStartSync().catch(() => undefined);
+      const transactionId = String(req.params.transactionId || '').trim();
+      if (!isSafeTransactionId(transactionId)) {
+        res.status(400).json({ error: 'Invalid transactionId format.' });
+        return;
+      }
+
+      const stored = await getDynamicUpiPayment(transactionId);
+      if (!stored) {
+        res.status(404).json({ error: 'Transaction not found.' });
+        return;
+      }
+
+      const body = req.body || {};
+      const providedToken =
+        typeof req.headers['x-status-token'] === 'string'
+          ? req.headers['x-status-token']
+          : typeof body.statusToken === 'string'
+            ? body.statusToken
+            : undefined;
+
+      const authorized =
+        isRequestAdminAuthenticated(req) ||
+        verifyTransactionStatusToken(stored, providedToken);
+      if (!authorized) {
+        res.status(401).json({ error: 'Invalid payment session token.' });
+        return;
+      }
+
+      const isSimulate = Boolean(body.simulate);
+      const rawUtr = typeof body.utr === 'string' ? body.utr.trim() : '';
+      if (!isSimulate && rawUtr.length < 6) {
+        res.status(400).json({
+          error: 'Enter a valid UPI UTR / Reference number (minimum 6 characters).',
+        });
+        return;
+      }
+
+      const finalUtr =
+        rawUtr || `4${Math.floor(10000000000 + Math.random() * 89999999999)}`;
+
+      const updated = await updateDynamicUpiPaymentStatus({
+        transactionId,
+        status: 'Paid',
+        utr: finalUtr,
+        providerRef: isSimulate ? 'SIMULATED-WEBHOOK' : 'UTR-CONFIRMED',
+      });
+
+      if (!updated.ok) {
+        res.status(updated.statusCode).json({ error: updated.error });
+        return;
+      }
+
+      res.json({
+        confirmed: true,
+        payment: updated.payment,
+        rtdbSynced: updated.rtdbSynced,
+      });
+    } catch {
+      res.status(500).json({ error: 'Could not confirm UPI payment.' });
+    }
+  });
+
+  app.get('/upi-checkout', (_req, res) => {
+    const publicHtmlPath = path.resolve(process.cwd(), 'public', 'upi-checkout.html');
+    const distHtmlPath = path.resolve(process.cwd(), 'dist', 'upi-checkout.html');
+    const target = fs.existsSync(publicHtmlPath)
+      ? publicHtmlPath
+      : fs.existsSync(distHtmlPath)
+        ? distHtmlPath
+        : null;
+    if (target) {
+      res.sendFile(target);
+      return;
+    }
+    res.status(404).send('UPI checkout page not found.');
   });
 
   return app;

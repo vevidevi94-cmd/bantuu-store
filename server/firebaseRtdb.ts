@@ -229,3 +229,58 @@ export async function pushCategoriesToRtdb(
   const res = await rtdbRequest(baseUrl, '/categories', 'PUT', categories);
   return res.ok;
 }
+
+export async function pushUpiPaymentToRtdb<T extends { transactionId: string }>(
+  baseUrl: string,
+  payment: T,
+): Promise<boolean> {
+  const res = await rtdbRequest(
+    baseUrl,
+    `/upiPayments/${encodeURIComponent(payment.transactionId)}`,
+    'PUT',
+    payment,
+  );
+  return res.ok;
+}
+
+export async function patchUpiPaymentInRtdb(
+  baseUrl: string,
+  transactionId: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const res = await rtdbRequest(
+    baseUrl,
+    `/upiPayments/${encodeURIComponent(transactionId)}`,
+    'PATCH',
+    patch,
+  );
+  return res.ok;
+}
+
+export async function fetchUpiPaymentFromRtdb<T>(
+  baseUrl: string,
+  transactionId: string,
+): Promise<T | null> {
+  const res = await rtdbRequest(
+    baseUrl,
+    `/upiPayments/${encodeURIComponent(transactionId)}`,
+    'GET',
+  );
+  if (!res.ok || !res.data || typeof res.data !== 'object') return null;
+  return res.data as T;
+}
+
+export async function fetchAllUpiPaymentsFromRtdb<T extends { createdAt?: string }>(
+  baseUrl: string,
+): Promise<T[]> {
+  const res = await rtdbRequest(baseUrl, '/upiPayments', 'GET');
+  if (!res.ok || !res.data || typeof res.data !== 'object') return [];
+  return Object.values(res.data as Record<string, unknown>)
+    .filter((v): v is T => Boolean(v && typeof v === 'object'))
+    .sort((a, b) => {
+      const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return tb - ta;
+    });
+}
+

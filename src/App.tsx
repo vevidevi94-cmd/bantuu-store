@@ -930,6 +930,12 @@ export default function App() {
             >
               Shipping &amp; Pay
             </a>
+            <a
+              href="/upi-checkout"
+              className="hover:text-[#C6A45C] hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            >
+              Quick UPI Pay
+            </a>
           </nav>
 
           {/* Zone 3: Orders & Bag */}
@@ -1271,6 +1277,9 @@ export default function App() {
               </button>
               <a href="#shop" className="hover:text-[#C6A45C]">
                 Browse Catalog
+              </a>
+              <a href="/upi-checkout" className="hover:text-[#C6A45C]">
+                Quick UPI Pay
               </a>
             </div>
           </div>

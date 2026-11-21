@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bantuu Store — Dynamic UPI Checkout</title>
+    <meta
+      name="description"
+      content="Pay securely via dynamic UPI QR & deep links with real-time payment verification on Bantuu Store."
+    />
+    <meta name="theme-color" content="#0F1D32" />
+    <link rel="icon" type="image/png" href="/bantuu-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f7f5ee;
+        --surface: #ffffff;
+        --navy: #0f1d32;
+        --navy-mid: #172a46;
+        --navy-border: #223654;
+        --gold: #c6a45c;
+        --gold-dark: #8a6d32;
+        --border: #ded8c8;
+        --text: #0f1d32;
+        --text-muted: #5c5852;
+        --success-bg: #ecfdf5;
+        --success-border: #6ee7b7;
+        --success-text: #065f46;
+        --danger-bg: #fef2f2;
+        --danger-border: #fca5a5;
+        --danger-text: #991b1b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        background: var(--navy);
+        color: var(--bg);
+        border-bottom: 1px solid var(--navy-border);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+      }
+
+      .header-inner {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        color: var(--bg);
+      }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        border: 1.5px solid var(--gold);
+        display: grid;
+        place-items: center;
+        font-family: 'Fraunces', serif;
+        font-weight: 700;
+        font-size: 18px;
+        color: var(--gold);
+      }
+
+      .brand-text {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.05;
+      }
+
+      .brand-name {
+        font-family: 'Fraunces', serif;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .brand-sub {
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--gold);
+        font-weight: 600;
+      }
+
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--navy-border);
+        background: var(--navy-mid);
+        color: var(--bg);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        transition: border-color 0.15s ease, color 0.15s ease;
+      }
+
+      .back-link:hover {
+        border-color: var(--gold);
+        color: var(--gold);
+      }
+
+      main {
+        flex: 1;
+        width: 100%;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 28px 20px 56px;
+      }
+
+      .page-intro {
+        margin-bottom: 24px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .eyebrow {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gold-dark);
+      }
+
+      h1 {
+        margin: 6px 0 0;
+        font-family: 'Fraunces', serif;
+        font-size: clamp(24px, 4vw, 34px);
+        line-height: 1.15;
+        font-weight: 600;
+      }
+
+      .merchant-meta {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: var(--text-muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 7px 12px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+
+      @media (min-width: 860px) {
+        .layout {
+          grid-template-columns: 1fr 1.1fr;
+        }
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(15, 29, 50, 0.05);
+      }
+
+      .card-header {
+        padding: 18px 22px;
+        background: var(--navy);
+        color: var(--bg);
+        border-bottom: 1px solid var(--navy-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .card-header h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .card-header-sub {
+        font-size: 11px;
+        color: var(--gold);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 600;
+      }
+
+      .card-body {
+        padding: 22px;
+      }
+
+      .field {
+        margin-bottom: 16px;
+      }
+
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #3e4756;
+        margin-bottom: 6px;
+      }
+
+      .amount-input-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+
+      .currency-prefix {
+        position: absolute;
+        left: 14px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--navy);
+        pointer-events: none;
+      }
+
+      input[type='number'],
+      input[type='text'] {
+        width: 100%;
+        padding: 11px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--navy);
+        font-family: inherit;
+        font-size: 14px;
+        transition: border-color 0.15s ease;
+      }
+
+      input[type='number'] {
+        padding-left: 34px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: var(--navy);
+      }
+
+      .quick-amounts {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .preset-btn {
+        padding: 8px 6px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--navy);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }
+
+      .preset-btn:hover {
+        background: #ece7da;
+        border-color: var(--navy);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 18px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+      }
+
+      .btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .btn-gold {
+        width: 100%;
+        background: var(--gold);
+        color: var(--navy);
+      }
+
+      .btn-gold:hover:not(:disabled) {
+        background: #b69249;
+      }
+
+      .btn-navy {
+        background: var(--navy);
+        color: var(--bg);
+      }
+
+      .btn-navy:hover:not(:disabled) {
+        background: var(--navy-mid);
+      }
+
+      .btn-outline {
+        background: #fff;
+        color: var(--navy);
+        border-color: var(--border);
+      }
+
+      .btn-outline:hover:not(:disabled) {
+        background: var(--bg);
+        border-color: var(--navy);
+      }
+
+      .btn-sm {
+        padding: 8px 12px;
+        font-size: 12px;
+        border-radius: 8px;
+      }
+
+      .alert-error {
+        display: none;
+        margin-bottom: 14px;
+        padding: 11px 13px;
+        border-radius: 9px;
+        border: 1px solid var(--danger-border);
+        background: var(--danger-bg);
+        color: var(--danger-text);
+        font-size: 13px;
+      }
+
+      .alert-error.visible {
+        display: block;
+      }
+
+      .empty-panel {
+        text-align: center;
+        padding: 36px 20px;
+        color: var(--text-muted);
+      }
+
+      .empty-panel h3 {
+        margin: 12px 0 6px;
+        color: var(--navy);
+        font-size: 17px;
+      }
+
+      .empty-panel p {
+        margin: 0 auto;
+        max-width: 340px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .qr-icon-box {
+        width: 54px;
+        height: 54px;
+        margin: 0 auto;
+        border-radius: 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        display: grid;
+        place-items: center;
+        color: var(--gold-dark);
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 18px;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .status-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 11px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        margin-bottom: 18px;
+        font-size: 13px;
+      }
+
+      .status-banner.paid {
+        background: var(--success-bg);
+        border-color: var(--success-border);
+        color: var(--success-text);
+      }
+
+      .status-label {
+        font-weight: 700;
+      }
+
+      .status-meta {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .status-banner.paid .status-meta {
+        color: var(--success-text);
+      }
+
+      .qr-stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 18px;
+        border-radius: 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+      }
+
+      .qr-frame {
+        background: #fff;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .qr-frame-top {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .amount-chip {
+        padding: 3px 9px;
+        border-radius: 6px;
+        background: var(--navy);
+        color: var(--gold);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .qr-img {
+        width: 220px;
+        height: 220px;
+        display: block;
+        object-fit: contain;
+      }
+
+      .meta-grid {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      @media (max-width: 500px) {
+        .meta-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .meta-item {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 9px 11px;
+      }
+
+      .meta-key {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--gold-dark);
+        margin-bottom: 3px;
+      }
+
+      .meta-val {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--navy);
+        word-break: break-all;
+      }
+
+      .app-links-grid {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .uri-preview {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 9px;
+        background: #f3efe4;
+        border: 1px solid var(--border);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #3e4756;
+        word-break: break-all;
+      }
+
+      .confirm-box {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+
+      .confirm-box h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--navy);
+      }
+
+      .utr-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .utr-row input {
+        flex: 1;
+        min-width: 180px;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      .receipt-card {
+        padding: 20px;
+        border-radius: 12px;
+        background: var(--success-bg);
+        border: 1px solid var(--success-border);
+        color: var(--success-text);
+      }
+
+      .receipt-card h3 {
+        margin: 0 0 6px;
+        font-family: 'Fraunces', serif;
+        font-size: 22px;
+      }
+
+      .receipt-list {
+        margin: 14px 0 18px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #a7f3d0;
+        color: var(--navy);
+        display: grid;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .receipt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .receipt-row span:last-child {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+        text-align: right;
+      }
+
+      .helper-note {
+        margin: 10px 0 0;
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-inner">
+        <a href="/" class="brand" aria-label="Bantuu Store home">
+          <span class="brand-mark">B</span>
+          <span class="brand-text">
+            <span class="brand-name">bantuu store</span>
+            <span class="brand-sub">UPI Checkout</span>
+          </span>
+        </a>
+        <a href="/" class="back-link">← Back to Store</a>
+      </div>
+    </header>
+
+    <main>
+      <div class="page-intro">
+        <div>
+          <p class="eyebrow">Dynamic UPI URI &amp; Firebase RTDB Sync</p>
+          <h1>Instant UPI Payment Checkout</h1>
+        </div>
+        <div id="merchantMeta" class="merchant-meta">Merchant UPI: Loading...</div>
+      </div>
+
+      <div class="layout">
+        <!-- Left Card: Enter Amount & Create Dynamic Order -->
+        <section class="card" aria-labelledby="amount-card-heading">
+          <div class="card-header">
+            <div>
+              <div class="card-header-sub">Step 1</div>
+              <h2 id="amount-card-heading">Enter Payment Details</h2>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="formError" class="alert-error" role="alert"></div>
+
+            <form id="upiCheckoutForm" novalidate>
+              <div class="field">
+                <label for="amountInput">Amount (INR) *</label>
+                <div class="amount-input-wrap">
+                  <span class="currency-prefix">₹</span>
+                  <input
+                    id="amountInput"
+                    name="amount"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    step="0.01"
+                    placeholder="199"
+                    required
+                  />
+                </div>
+                <div class="quick-amounts" aria-label="Quick amount presets">
+                  <button type="button" class="preset-btn" data-amount="49">₹49</button>
+                  <button type="button" class="preset-btn" data-amount="199">₹199</button>
+                  <button type="button" class="preset-btn" data-amount="499">₹499</button>
+                  <button type="button" class="preset-btn" data-amount="999">₹999</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="customerNameInput">Your Name (Optional)</label>
+                <input
+                  id="customerNameInput"
+                  name="customerName"
+                  type="text"
+                  maxlength="60"
+                  placeholder="e.g. Aarav Patel"
+                />
+              </div>
+
+              <div class="field">
+                <label for="noteInput">Order Note / Purpose (Optional)</label>
+                <input
+                  id="noteInput"
+                  name="note"
+                  type="text"
+                  maxlength="50"
+                  placeholder="e.g. Store Counter Payment"
+                />
+              </div>
+
+              <button id="payNowBtn" type="submit" class="btn btn-gold">
+                Pay Now &amp; Generate UPI QR
+              </button>
+            </form>
+
+            <p class="helper-note">
+              Clicking <strong>Pay Now</strong> creates a unique Order ID &amp; Transaction ID in
+              Firebase Realtime Database, generates a dynamic UPI QR code (<code>upi://pay</code>),
+              and automatically polls for payment confirmation.
+            </p>
+          </div>
+        </section>
+
+        <!-- Right Card: Dynamic QR, Deep Links, Polling & Receipt -->
+        <section class="card" aria-labelledby="qr-card-heading">
+          <div class="card-header">
+            <div>
+              <div class="card-header-sub">Step 2</div>
+              <h2 id="qr-card-heading">Scan QR or Open UPI App</h2>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- Idle state -->
+            <div id="idleState" class="empty-panel">
+              <div class="qr-icon-box">QR</div>
+              <h3>Ready to generate payment QR</h3>
+              <p>
+                Enter an amount on the left and tap <strong>Pay Now</strong> to receive a unique
+                Order ID, dynamic UPI Deep Link, and scannable QR code.
+              </p>
+            </div>
+
+            <!-- Active pending payment state -->
+            <div id="activePaymentState" class="hidden">
+              <div id="statusBanner" class="status-banner" role="status" aria-live="polite">
+                <span id="statusLabel" class="status-label">Status: Pending</span>
+                <span id="pollInfo" class="status-meta">Checking live status...</span>
+              </div>
+
+              <div class="qr-stage">
+                <div class="qr-frame">
+                  <div class="qr-frame-top">
+                    <span id="qrAmountChip" class="amount-chip">₹0</span>
+                    <button id="copyUpiBtn" type="button" class="btn btn-outline btn-sm">
+                      Copy UPI ID
+                    </button>
+                  </div>
+                  <img id="qrImage" class="qr-img" src="" alt="Dynamic UPI Payment QR Code" />
+                </div>
+
+                <div class="meta-grid">
+                  <div class="meta-item">
+                    <span class="meta-key">Order ID</span>
+                    <span id="orderIdText" class="meta-val">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-key">Transaction ID</span>
+                    <span id="txnIdText" class="meta-val">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-key">Merchant UPI ID</span>
+                    <span id="merchantUpiText" class="meta-val">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-key">Amount</span>
+                    <span id="amountText" class="meta-val">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="app-links-grid">
+                <a id="deepLinkUpi" href="#" class="btn btn-navy btn-sm">Open Any UPI App</a>
+                <a id="deepLinkPhonePe" href="#" class="btn btn-outline btn-sm">PhonePe</a>
+                <a id="deepLinkGPay" href="#" class="btn btn-outline btn-sm">Google Pay</a>
+                <a id="deepLinkPaytm" href="#" class="btn btn-outline btn-sm">Paytm</a>
+              </div>
+
+              <div class="uri-preview" id="upiUriPreview"></div>
+
+              <div class="confirm-box">
+                <h3>Confirm Payment Status</h3>
+                <div id="confirmError" class="alert-error" role="alert"></div>
+                <form id="utrConfirmForm" class="utr-row">
+                  <label for="utrInput" style="position: absolute; left: -9999px">
+                    12-digit UTR Reference
+                  </label>
+                  <input
+                    id="utrInput"
+                    type="text"
+                    placeholder="Enter 12-digit UTR after paying"
+                    maxlength="40"
+                  />
+                  <button id="submitUtrBtn" type="submit" class="btn btn-navy btn-sm">
+                    Verify UTR
+                  </button>
+                </form>
+                <button
+                  id="simulateWebhookBtn"
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  style="width: 100%"
+                >
+                  Simulate Webhook Confirmation (Mark Paid in Firebase RTDB)
+                </button>
+              </div>
+            </div>
+
+            <!-- Paid receipt state -->
+            <div id="paidReceiptState" class="hidden">
+              <div class="receipt-card" role="status" aria-live="polite">
+                <h3>Payment Confirmed — Paid</h3>
+                <p style="margin: 0; font-size: 13px">
+                  Transaction verified and updated to <strong>Paid</strong> in Firebase Realtime
+                  Database.
+                </p>
+                <div class="receipt-list">
+                  <div class="receipt-row">
+                    <span>Status</span>
+                    <span id="receiptStatus">Paid</span>
+                  </div>
+                  <div class="receipt-row">
+                    <span>Order ID</span>
+                    <span id="receiptOrderId">—</span>
+                  </div>
+                  <div class="receipt-row">
+                    <span>Transaction ID</span>
+                    <span id="receiptTxnId">—</span>
+                  </div>
+                  <div class="receipt-row">
+                    <span>Amount Paid</span>
+                    <span id="receiptAmount">—</span>
+                  </div>
+                  <div class="receipt-row">
+                    <span>UTR / Reference</span>
+                    <span id="receiptUtr">—</span>
+                  </div>
+                  <div class="receipt-row">
+                    <span>Confirmed At</span>
+                    <span id="receiptPaidAt">—</span>
+                  </div>
+                </div>
+                <button id="newPaymentBtn" type="button" class="btn btn-navy" style="width: 100%">
+                  Create Another UPI Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      (function () {
+        const form = document.getElementById('upiCheckoutForm');
+        const amountInput = document.getElementById('amountInput');
+        const customerNameInput = document.getElementById('customerNameInput');
+        const noteInput = document.getElementById('noteInput');
+        const payNowBtn = document.getElementById('payNowBtn');
+        const formError = document.getElementById('formError');
+        const merchantMeta = document.getElementById('merchantMeta');
+
+        const idleState = document.getElementById('idleState');
+        const activePaymentState = document.getElementById('activePaymentState');
+        const paidReceiptState = document.getElementById('paidReceiptState');
+
+        const statusLabel = document.getElementById('statusLabel');
+        const pollInfo = document.getElementById('pollInfo');
+        const qrAmountChip = document.getElementById('qrAmountChip');
+        const qrImage = document.getElementById('qrImage');
+        const orderIdText = document.getElementById('orderIdText');
+        const txnIdText = document.getElementById('txnIdText');
+        const merchantUpiText = document.getElementById('merchantUpiText');
+        const amountText = document.getElementById('amountText');
+        const upiUriPreview = document.getElementById('upiUriPreview');
+        const copyUpiBtn = document.getElementById('copyUpiBtn');
+
+        const deepLinkUpi = document.getElementById('deepLinkUpi');
+        const deepLinkPhonePe = document.getElementById('deepLinkPhonePe');
+        const deepLinkGPay = document.getElementById('deepLinkGPay');
+        const deepLinkPaytm = document.getElementById('deepLinkPaytm');
+
+        const utrConfirmForm = document.getElementById('utrConfirmForm');
+        const utrInput = document.getElementById('utrInput');
+        const submitUtrBtn = document.getElementById('submitUtrBtn');
+        const simulateWebhookBtn = document.getElementById('simulateWebhookBtn');
+        const confirmError = document.getElementById('confirmError');
+
+        const receiptStatus = document.getElementById('receiptStatus');
+        const receiptOrderId = document.getElementById('receiptOrderId');
+        const receiptTxnId = document.getElementById('receiptTxnId');
+        const receiptAmount = document.getElementById('receiptAmount');
+        const receiptUtr = document.getElementById('receiptUtr');
+        const receiptPaidAt = document.getElementById('receiptPaidAt');
+        const newPaymentBtn = document.getElementById('newPaymentBtn');
+
+        let currentSession = null;
+        let pollTimer = null;
+        let pollCount = 0;
+
+        function formatInr(amount) {
+          return new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            maximumFractionDigits: 2,
+          }).format(Number(amount) || 0);
+        }
+
+        function setSafeHref(anchor, uri, allowedPrefix) {
+          if (typeof uri === 'string' && uri.startsWith(allowedPrefix)) {
+            anchor.setAttribute('href', uri);
+          } else {
+            anchor.setAttribute('href', '#');
+          }
+        }
+
+        function showError(el, msg) {
+          if (!msg) {
+            el.textContent = '';
+            el.classList.remove('visible');
+            return;
+          }
+          el.textContent = msg;
+          el.classList.add('visible');
+        }
+
+        function stopPolling() {
+          if (pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = null;
+          }
+        }
+
+        function showPaidReceipt(payment) {
+          stopPolling();
+          idleState.classList.add('hidden');
+          activePaymentState.classList.add('hidden');
+          paidReceiptState.classList.remove('hidden');
+
+          receiptStatus.textContent = payment.status || 'Paid';
+          receiptOrderId.textContent = payment.orderId || '—';
+          receiptTxnId.textContent = payment.transactionId || '—';
+          receiptAmount.textContent = formatInr(payment.amount);
+          receiptUtr.textContent = payment.utr || 'Confirmed';
+          receiptPaidAt.textContent = payment.paidAt
+            ? new Date(payment.paidAt).toLocaleString('en-IN')
+            : new Date().toLocaleString('en-IN');
+        }
+
+        async function pollPaymentStatus() {
+          if (!currentSession) return;
+          pollCount += 1;
+          pollInfo.textContent = 'Polling #' + pollCount + ' · Live';
+          try {
+            const res = await fetch(
+              '/api/upi-payments/' + encodeURIComponent(currentSession.payment.transactionId) + '/status',
+              {
+                headers: { 'x-status-token': currentSession.statusToken },
+                cache: 'no-store',
+              },
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data || !data.payment) return;
+            statusLabel.textContent = 'Status: ' + data.payment.status;
+            if (data.payment.status === 'Paid') {
+              showPaidReceipt(data.payment);
+            } else if (data.payment.status === 'Failed' || data.payment.status === 'Expired') {
+              stopPolling();
+              pollInfo.textContent = 'Polling stopped';
+            }
+          } catch (_) {
+            pollInfo.textContent = 'Retrying poll...';
+          }
+        }
+
+        function startPolling() {
+          stopPolling();
+          pollCount = 0;
+          pollPaymentStatus();
+          pollTimer = window.setInterval(pollPaymentStatus, 2500);
+        }
+
+        // Load merchant UPI handle from storefront settings
+        fetch('/api/store')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data && data.settings && data.settings.upiId) {
+              merchantMeta.textContent = 'Merchant UPI: ' + data.settings.upiId;
+            } else {
+              merchantMeta.textContent = 'Merchant UPI: skiend@axl';
+            }
+          })
+          .catch(() => {
+            merchantMeta.textContent = 'Merchant UPI: skiend@axl';
+          });
+
+        // Quick amount presets
+        document.querySelectorAll('.preset-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const val = btn.getAttribute('data-amount');
+            if (val) amountInput.value = val;
+            amountInput.focus();
+          });
+        });
+
+        // Create Dynamic UPI Payment Session
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          showError(formError, '');
+          showError(confirmError, '');
+
+          const numericAmount = Number(amountInput.value);
+          if (!Number.isFinite(numericAmount) || numericAmount < 1 || numericAmount > 100000) {
+            showError(formError, 'Please enter a valid amount between ₹1 and ₹1,00,000.');
+            return;
+          }
+
+          payNowBtn.disabled = true;
+          payNowBtn.textContent = 'Generating Dynamic UPI QR...';
+
+          try {
+            const res = await fetch('/api/upi-payments/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: numericAmount,
+                customerName: customerNameInput.value.trim(),
+                note: noteInput.value.trim(),
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.payment) {
+              showError(formError, data.error || 'Could not initiate UPI payment.');
+              return;
+            }
+
+            currentSession = data;
+            const p = data.payment;
+
+            idleState.classList.add('hidden');
+            paidReceiptState.classList.add('hidden');
+            activePaymentState.classList.remove('hidden');
+
+            statusLabel.textContent = 'Status: ' + p.status;
+            qrAmountChip.textContent = formatInr(p.amount);
+            if (
+              typeof data.qrCodeDataUrl === 'string' &&
+              data.qrCodeDataUrl.startsWith('data:image/png;base64,')
+            ) {
+              qrImage.src = data.qrCodeDataUrl;
+            } else {
+              qrImage.removeAttribute('src');
+            }
+            orderIdText.textContent = p.orderId;
+            txnIdText.textContent = p.transactionId;
+            merchantUpiText.textContent = p.merchantUpiId;
+            amountText.textContent = formatInr(p.amount);
+            upiUriPreview.textContent = p.upiUri;
+            utrInput.value = '';
+
+            setSafeHref(deepLinkUpi, data.appLinks.upi, 'upi://pay?');
+            setSafeHref(deepLinkPhonePe, data.appLinks.phonepe, 'phonepe://pay?');
+            setSafeHref(deepLinkGPay, data.appLinks.gpay, 'tez://upi/pay?');
+            setSafeHref(deepLinkPaytm, data.appLinks.paytm, 'paytmmp://pay?');
+
+            startPolling();
+          } catch (_) {
+            showError(formError, 'Network error while generating UPI payment. Please try again.');
+          } finally {
+            payNowBtn.disabled = false;
+            payNowBtn.textContent = 'Pay Now & Generate UPI QR';
+          }
+        });
+
+        copyUpiBtn.addEventListener('click', async () => {
+          if (!currentSession) return;
+          try {
+            await navigator.clipboard.writeText(currentSession.payment.merchantUpiId);
+            copyUpiBtn.textContent = 'Copied!';
+            window.setTimeout(() => {
+              copyUpiBtn.textContent = 'Copy UPI ID';
+            }, 1800);
+          } catch (_) {}
+        });
+
+        async function confirmCurrentPayment(payload) {
+          if (!currentSession) return;
+          showError(confirmError, '');
+          submitUtrBtn.disabled = true;
+          simulateWebhookBtn.disabled = true;
+          try {
+            const res = await fetch(
+              '/api/upi-payments/' + encodeURIComponent(currentSession.payment.transactionId) + '/confirm',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-status-token': currentSession.statusToken,
+                },
+                body: JSON.stringify(payload),
+              },
+            );
+            const data = await res.json();
+            if (!res.ok) {
+              showError(confirmError, data.error || 'Could not confirm payment.');
+              return;
+            }
+            // Let the active poller or immediate update transition cleanly to Paid
+            await pollPaymentStatus();
+          } catch (_) {
+            showError(confirmError, 'Network error while verifying payment status.');
+          } finally {
+            submitUtrBtn.disabled = false;
+            simulateWebhookBtn.disabled = false;
+          }
+        }
+
+        utrConfirmForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const utr = utrInput.value.trim();
+          if (utr.length < 6) {
+            showError(confirmError, 'Enter your 12-digit UPI UTR reference (min 6 characters).');
+            return;
+          }
+          confirmCurrentPayment({ utr });
+        });
+
+        simulateWebhookBtn.addEventListener('click', () => {
+          confirmCurrentPayment({ simulate: true });
+        });
+
+        newPaymentBtn.addEventListener('click', () => {
+          stopPolling();
+          currentSession = null;
+          paidReceiptState.classList.add('hidden');
+          activePaymentState.classList.add('hidden');
+          idleState.classList.remove('hidden');
+          amountInput.value = '';
+          noteInput.value = '';
+          amountInput.focus();
+        });
+      })();
+    </script>
+  </body>
+</html>
