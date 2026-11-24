@@ -4,10 +4,12 @@ import crypto from 'node:crypto';
 import {
   buildAppSpecificUpiLinks,
   buildDynamicUpiDeepLink,
+  decodePngDataUrl,
   formatUpiAmountParam,
   isAllowedUpiDeepLink,
   isSafeTransactionId,
   sanitizeUpiText,
+  UPI_APP_PACKAGES,
   validateUpiPaymentAmount,
 } from './upiPaymentLogic';
 import {
@@ -36,14 +38,14 @@ test('isSafeTransactionId allows clean IDs and blocks path traversal or Firebase
   assert.equal(isSafeTransactionId('short'), false);
 });
 
-test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal @ and %20 spaces', () => {
+test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal @, %20 spaces, and no emojis', () => {
   const uri = buildDynamicUpiDeepLink({
     merchantUpiId: 'skiend@axl',
     merchantName: 'Bantuu Store',
     amount: 249.5,
     orderId: 'ORD-TEST-01',
     transactionId: 'TXN-TEST-99',
-    note: 'Counter\nOrder <script>',
+    note: 'Patanjali Biscuits🍪\n<script>',
   });
 
   assert.ok(uri.startsWith('upi://pay?'));
@@ -57,9 +59,20 @@ test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal
   assert.equal(parsed.searchParams.get('am'), '249.50');
   assert.equal(parsed.searchParams.get('cu'), 'INR');
   assert.equal(parsed.searchParams.get('tr'), 'TXN-TEST-99');
-  assert.equal(parsed.searchParams.get('tn'), 'ORD-TEST-01 - Counter Order script');
+  assert.equal(parsed.searchParams.get('tn'), 'ORD-TEST-01 - Patanjali Biscuits script');
   assert.equal(formatUpiAmountParam(10), '10.00');
-  assert.equal(sanitizeUpiText('  Hello\t<b>World</b>  ', 20), 'Hello b World /b');
+  assert.equal(sanitizeUpiText('  Hello\t<b>World</b>🍪  ', 20), 'Hello b World /b');
+});
+
+test('decodePngDataUrl decodes valid base64 PNG data URLs and rejects invalid inputs', () => {
+  const sample = 'data:image/png;base64,' + Buffer.from([137, 80, 78, 71]).toString('base64');
+  const bytes = decodePngDataUrl(sample);
+  assert.ok(bytes instanceof Uint8Array);
+  assert.deepEqual(Array.from(bytes), [137, 80, 78, 71]);
+  assert.equal(decodePngDataUrl('https://evil.example/qr.png'), null);
+  assert.equal(UPI_APP_PACKAGES.phonepe.androidPackage, 'com.phonepe.app');
+  assert.equal(UPI_APP_PACKAGES.gpay.androidPackage, 'com.google.android.apps.nbu.paisa.user');
+  assert.equal(UPI_APP_PACKAGES.paytm.androidPackage, 'net.one97.paytm');
 });
 
 test('buildAppSpecificUpiLinks maps standard UPI query to GPay, iOS GPay, PhonePe, Paytm, and Android Intent', () => {

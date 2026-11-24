@@ -176,7 +176,7 @@ export async function createDynamicUpiPayment(input: {
 
   const qrCodeDataUrl = await QRCode.toDataURL(upiUri, {
     width: 640,
-    margin: 2,
+    margin: 4,
     color: { dark: '#0F1D32', light: '#FFFFFF' },
     errorCorrectionLevel: 'M',
   });

@@ -60,10 +60,41 @@ export function formatUpiAmountParam(amount: number): string {
 export function sanitizeUpiText(value: unknown, maxLen = 60): string {
   if (typeof value !== 'string') return '';
   return value
+    .replace(/[^\x20-\x7E]/g, ' ')
     .replace(/[\r\n\t<>]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen);
+}
+
+export type UpiAppKey = 'any' | 'phonepe' | 'gpay' | 'paytm';
+
+export const UPI_APP_PACKAGES: Record<UpiAppKey, { label: string; androidPackage: string }> = {
+  any: { label: 'UPI App', androidPackage: '' },
+  phonepe: { label: 'PhonePe', androidPackage: 'com.phonepe.app' },
+  gpay: { label: 'Google Pay', androidPackage: 'com.google.android.apps.nbu.paisa.user' },
+  paytm: { label: 'Paytm', androidPackage: 'net.one97.paytm' },
+};
+
+export function decodePngDataUrl(dataUrl: string): Uint8Array | null {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
+    return null;
+  }
+  const base64 = dataUrl.slice('data:image/png;base64,'.length);
+  if (!base64) return null;
+  try {
+    if (typeof atob === 'function') {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+    return new Uint8Array(Buffer.from(base64, 'base64'));
+  } catch {
+    return null;
+  }
 }
 
 function encodeUpiParamValue(value: string, preserveAtSign = false): string {
