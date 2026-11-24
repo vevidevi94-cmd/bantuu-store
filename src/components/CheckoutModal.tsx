@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  ExternalLink,
   Maximize2,
   QrCode,
   Share2,
@@ -13,7 +14,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  buildUpiPaymentUri,
   calculateCartTotals,
   formatINR,
   formatOrderDateTime,
@@ -23,6 +23,12 @@ import {
   type PaymentMethod,
   type StoreSettings,
 } from '../utils/storeLogic';
+import {
+  buildAppSpecificUpiLinks,
+  buildDynamicUpiDeepLink,
+  isAllowedUpiDeepLink,
+  type UpiPaymentRecord,
+} from '../utils/upiPaymentLogic';
 import { MediaRenderer } from './MediaRenderer';
 
 interface CheckoutModalProps {
@@ -114,6 +120,13 @@ export function CheckoutModal({
   const [qrStatusMsg, setQrStatusMsg] = useState('');
   const [isQrZoomOpen, setIsQrZoomOpen] = useState(false);
   const [dynamicQrDataUrl, setDynamicQrDataUrl] = useState('');
+  const [upiSession, setUpiSession] = useState<{
+    payment: UpiPaymentRecord;
+    appLinks: ReturnType<typeof buildAppSpecificUpiLinks>;
+    statusToken: string;
+  } | null>(null);
+  const [upiSessionLoading, setUpiSessionLoading] = useState(false);
+  const [upiAppLaunchMsg, setUpiAppLaunchMsg] = useState('');
   const upiPanelRef = useRef<HTMLDivElement | null>(null);
 
   const totals = calculateCartTotals(
@@ -130,6 +143,7 @@ export function CheckoutModal({
           Android?: {
             downloadFile?: (url: string, filename: string) => void;
             shareFile?: (url: string, text: string) => void;
+            openExternalUrl?: (url: string) => void;
           };
         }).Android
       : undefined;
@@ -138,17 +152,37 @@ export function CheckoutModal({
   const isAndroidWebView =
     typeof navigator !== 'undefined' &&
     /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
+  const isIOSDevice =
+    typeof navigator !== 'undefined' &&
+    /iPad|iPhone|iPod/i.test(navigator.userAgent);
   const canUseWebShareApi =
     hasAndroidShareBridge ||
     (typeof navigator !== 'undefined' &&
       typeof navigator.share === 'function' &&
       !isAndroidWebView);
-  const upiUri = buildUpiPaymentUri(
-    settings.upiId,
-    settings.merchantName,
-    totals.total,
-    `${settings.storeName} Order`,
+
+  const fallbackTxnRef = useMemo(
+    () => `ORD-${safePayableAmount}-${Date.now().toString(36).toUpperCase().slice(-5)}`,
+    [safePayableAmount],
   );
+  const fallbackUpiUri = useMemo(
+    () =>
+      buildDynamicUpiDeepLink({
+        merchantUpiId: settings.upiId,
+        merchantName: settings.merchantName || settings.storeName,
+        amount: safePayableAmount,
+        orderId: fallbackTxnRef,
+        transactionId: `TXN-${fallbackTxnRef}`,
+        note: `${settings.storeName} Order`,
+      }),
+    [settings.upiId, settings.merchantName, settings.storeName, safePayableAmount, fallbackTxnRef],
+  );
+  const activeUpiUri = upiSession?.payment.upiUri || fallbackUpiUri;
+  const activeAppLinks = useMemo(
+    () => upiSession?.appLinks || buildAppSpecificUpiLinks(activeUpiUri),
+    [upiSession, activeUpiUri],
+  );
+  const upiUri = activeUpiUri;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -160,7 +194,94 @@ export function CheckoutModal({
     setSavingQr(false);
     setQrStatusMsg('');
     setIsQrZoomOpen(false);
+    setUpiSession(null);
+    setUpiAppLaunchMsg('');
   }, [isOpen]);
+
+  // Create dynamic UPI payment session (Order ID + Transaction ID + RTDB node) when UPI is chosen
+  useEffect(() => {
+    if (!isOpen || paymentMethod !== 'UPI' || safePayableAmount < 1) return;
+    if (upiSession && Math.round(upiSession.payment.amount) === safePayableAmount) return;
+
+    let cancelled = false;
+    setUpiSessionLoading(true);
+    const primaryItemName = items[0]?.name ? items[0].name.slice(0, 32) : 'Store Order';
+    const orderNote =
+      items.length > 1
+        ? `${primaryItemName} +${items.length - 1}`
+        : primaryItemName;
+
+    fetch('/api/upi-payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: safePayableAmount,
+        note: orderNote,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.payment || !data?.statusToken) return;
+        setUpiSession({
+          payment: data.payment as UpiPaymentRecord,
+          appLinks: data.appLinks || buildAppSpecificUpiLinks(data.payment.upiUri),
+          statusToken: String(data.statusToken),
+        });
+        if (
+          typeof data.qrCodeDataUrl === 'string' &&
+          data.qrCodeDataUrl.startsWith('data:image/png;base64,')
+        ) {
+          setDynamicQrDataUrl(data.qrCodeDataUrl);
+          setQrLoadError(false);
+        }
+      })
+      .catch(() => {
+        // Fallback client-side QR and deep links remain immediately usable
+      })
+      .finally(() => {
+        if (!cancelled) setUpiSessionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, paymentMethod, safePayableAmount, items, upiSession]);
+
+  // Live poll dynamic UPI status from Firebase RTDB; auto-fills UTR when confirmed Paid
+  useEffect(() => {
+    if (!isOpen || paymentMethod !== 'UPI' || !upiSession) return;
+    if (upiSession.payment.status === 'Paid') return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/upi-payments/${encodeURIComponent(upiSession.payment.transactionId)}/status`,
+          {
+            headers: { 'x-status-token': upiSession.statusToken },
+            cache: 'no-store',
+          },
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!data?.payment || cancelled) return;
+        const updatedPayment = data.payment as UpiPaymentRecord;
+        setUpiSession((prev) => (prev ? { ...prev, payment: updatedPayment } : prev));
+        if (updatedPayment.status === 'Paid' && updatedPayment.utr) {
+          setUpiTransactionId((current) => current.trim() || updatedPayment.utr || '');
+          setUpiAppLaunchMsg('Payment confirmed as Paid! You can now place your order.');
+        }
+      } catch {
+        // keep polling silently
+      }
+    };
+
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isOpen, paymentMethod, upiSession]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -217,6 +338,44 @@ export function CheckoutModal({
       window.setTimeout(() => setCopiedUpi(false), 1800);
     } catch {
       // Clipboard blocked in non-HTTPS contexts; ignore silently
+    }
+  };
+
+  const handleLaunchUpiApp = (
+    e: { preventDefault: () => void },
+    appName: string,
+    targetUri: string,
+  ) => {
+    if (!isAllowedUpiDeepLink(targetUri)) {
+      e.preventDefault();
+      return;
+    }
+    setUpiAppLaunchMsg(
+      `Opening ${appName} for ${formatINR(totals.total)}... After paying, paste your 12-digit UTR below (or scan the QR if on desktop).`,
+    );
+
+    const win = window as unknown as {
+      Android?: { openExternalUrl?: (url: string) => void };
+      AppInventor?: { setWebViewString?: (value: string) => void };
+    };
+
+    if (typeof win.Android?.openExternalUrl === 'function') {
+      e.preventDefault();
+      win.Android.openExternalUrl(targetUri);
+      return;
+    }
+
+    if (typeof win.AppInventor?.setWebViewString === 'function') {
+      win.AppInventor.setWebViewString(
+        JSON.stringify({
+          action: 'upi_pay',
+          app: appName,
+          url: targetUri,
+          amount: safePayableAmount,
+          upiId: settings.upiId,
+          transactionId: upiSession?.payment.transactionId || '',
+        }),
+      );
     }
   };
 
@@ -706,6 +865,79 @@ export function CheckoutModal({
                     ref={upiPanelRef}
                     className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] space-y-4"
                   >
+                    {/* Direct One-Tap Pay with UPI App Section */}
+                    <div className="p-3.5 rounded-xl bg-white border border-[#DED8C8] space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-[#0F1D32]">
+                          <Smartphone className="w-4 h-4 text-[#8A6D32]" />
+                          <span>Pay Directly with UPI App</span>
+                        </div>
+                        {upiSession ? (
+                          <span
+                            className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded ${
+                              upiSession.payment.status === 'Paid'
+                                ? 'bg-[#ECFDF5] text-[#065F46] border border-[#6EE7B7]'
+                                : 'bg-[#F7F5EE] text-[#8A6D32] border border-[#DED8C8]'
+                            }`}
+                          >
+                            {upiSession.payment.status === 'Paid'
+                              ? 'Confirmed · Paid'
+                              : `Ref: ${upiSession.payment.orderId}`}
+                          </span>
+                        ) : upiSessionLoading ? (
+                          <span className="text-[10px] font-mono text-[#5C5852]">
+                            Creating UPI link...
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <a
+                        href={activeAppLinks.upi}
+                        onClick={(e) => handleLaunchUpiApp(e, 'UPI App', activeAppLinks.upi)}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#0F1D32] text-[#F7F5EE] text-sm font-semibold hover:bg-[#172A46] transition-colors"
+                      >
+                        <Smartphone className="w-4 h-4 text-[#C6A45C]" />
+                        <span>Pay with UPI App — {formatINR(totals.total)}</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-[#C6A45C]" />
+                      </a>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <a
+                          href={activeAppLinks.phonepe}
+                          onClick={(e) => handleLaunchUpiApp(e, 'PhonePe', activeAppLinks.phonepe)}
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors"
+                        >
+                          <span>PhonePe</span>
+                        </a>
+                        <a
+                          href={isIOSDevice ? activeAppLinks.gpayIos : activeAppLinks.gpay}
+                          onClick={(e) =>
+                            handleLaunchUpiApp(
+                              e,
+                              'Google Pay',
+                              isIOSDevice ? activeAppLinks.gpayIos : activeAppLinks.gpay,
+                            )
+                          }
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors"
+                        >
+                          <span>Google Pay</span>
+                        </a>
+                        <a
+                          href={activeAppLinks.paytm}
+                          onClick={(e) => handleLaunchUpiApp(e, 'Paytm', activeAppLinks.paytm)}
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors"
+                        >
+                          <span>Paytm</span>
+                        </a>
+                      </div>
+
+                      {upiAppLaunchMsg && (
+                        <p className="text-[11px] font-medium text-[#065F46] bg-[#ECFDF5] border border-[#6EE7B7]/60 rounded-lg px-2.5 py-1.5">
+                          {upiAppLaunchMsg}
+                        </p>
+                      )}
+                    </div>
+
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                       {(() => {
                         const fallbackQrUrl = settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg';
@@ -813,7 +1045,7 @@ export function CheckoutModal({
                           </span>
                         </p>
                         <p className="text-[11px] text-[#5C5852] leading-relaxed">
-                          Tap <strong>Save QR</strong> or <strong>Share QR</strong> (or tap the QR to zoom &amp; screenshot), pay {formatINR(totals.total)}, then enter your 12-digit UTR number below.
+                          Tap <strong>Pay with UPI App</strong> above or scan / <strong>Save QR</strong> to pay {formatINR(totals.total)}, then enter your 12-digit UTR number below.
                         </p>
                       </div>
                     </div>

@@ -66,6 +66,11 @@ export function sanitizeUpiText(value: unknown, maxLen = 60): string {
     .slice(0, maxLen);
 }
 
+function encodeUpiParamValue(value: string, preserveAtSign = false): string {
+  const encoded = encodeURIComponent(value);
+  return preserveAtSign ? encoded.replace(/%40/gi, '@') : encoded;
+}
+
 export function buildDynamicUpiDeepLink(input: UpiDeepLinkParams): string {
   const pa = sanitizeUpiText(input.merchantUpiId, 80);
   const pn = sanitizeUpiText(input.merchantName, 60) || 'Bantuu Store';
@@ -74,23 +79,25 @@ export function buildDynamicUpiDeepLink(input: UpiDeepLinkParams): string {
   const customNote = sanitizeUpiText(input.note, 50);
   const tn = customNote ? `${orderId} - ${customNote}`.slice(0, 80) : `Order ${orderId}`;
 
-  const params = new URLSearchParams({
-    pa,
-    pn,
-    am: formatUpiAmountParam(input.amount),
-    cu: 'INR',
-    tr,
-    tn,
-  });
+  const queryParts = [
+    `pa=${encodeUpiParamValue(pa, true)}`,
+    `pn=${encodeUpiParamValue(pn)}`,
+    `am=${encodeUpiParamValue(formatUpiAmountParam(input.amount))}`,
+    'cu=INR',
+    `tr=${encodeUpiParamValue(tr)}`,
+    `tn=${encodeUpiParamValue(tn)}`,
+  ];
 
-  return `upi://pay?${params.toString()}`;
+  return `upi://pay?${queryParts.join('&')}`;
 }
 
 export function buildAppSpecificUpiLinks(standardUpiUri: string): {
   upi: string;
   gpay: string;
+  gpayIos: string;
   phonepe: string;
   paytm: string;
+  androidIntent: string;
 } {
   const query = standardUpiUri.startsWith('upi://pay?')
     ? standardUpiUri.slice('upi://pay?'.length)
@@ -98,7 +105,21 @@ export function buildAppSpecificUpiLinks(standardUpiUri: string): {
   return {
     upi: standardUpiUri,
     gpay: `tez://upi/pay?${query}`,
+    gpayIos: `gpay://upi/pay?${query}`,
     phonepe: `phonepe://pay?${query}`,
     paytm: `paytmmp://pay?${query}`,
+    androidIntent: `intent://pay?${query}#Intent;scheme=upi;end`,
   };
+}
+
+export function isAllowedUpiDeepLink(uri: string): boolean {
+  if (typeof uri !== 'string') return false;
+  return (
+    uri.startsWith('upi://pay?') ||
+    uri.startsWith('phonepe://pay?') ||
+    uri.startsWith('tez://upi/pay?') ||
+    uri.startsWith('gpay://upi/pay?') ||
+    uri.startsWith('paytmmp://pay?') ||
+    uri.startsWith('intent://pay?')
+  );
 }

@@ -5,6 +5,7 @@ import {
   buildAppSpecificUpiLinks,
   buildDynamicUpiDeepLink,
   formatUpiAmountParam,
+  isAllowedUpiDeepLink,
   isSafeTransactionId,
   sanitizeUpiText,
   validateUpiPaymentAmount,
@@ -35,7 +36,7 @@ test('isSafeTransactionId allows clean IDs and blocks path traversal or Firebase
   assert.equal(isSafeTransactionId('short'), false);
 });
 
-test('buildDynamicUpiDeepLink produces standard upi://pay URI with required merchant and order params', () => {
+test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal @ and %20 spaces', () => {
   const uri = buildDynamicUpiDeepLink({
     merchantUpiId: 'skiend@axl',
     merchantName: 'Bantuu Store',
@@ -46,6 +47,10 @@ test('buildDynamicUpiDeepLink produces standard upi://pay URI with required merc
   });
 
   assert.ok(uri.startsWith('upi://pay?'));
+  assert.ok(uri.includes('pa=skiend@axl'), 'pa should keep literal @ for UPI apps');
+  assert.ok(uri.includes('pn=Bantuu%20Store'), 'spaces should encode as %20, not +');
+  assert.equal(uri.includes('+'), false, 'URI should not contain + encoded spaces');
+
   const parsed = new URL(uri);
   assert.equal(parsed.searchParams.get('pa'), 'skiend@axl');
   assert.equal(parsed.searchParams.get('pn'), 'Bantuu Store');
@@ -57,7 +62,7 @@ test('buildDynamicUpiDeepLink produces standard upi://pay URI with required merc
   assert.equal(sanitizeUpiText('  Hello\t<b>World</b>  ', 20), 'Hello b World /b');
 });
 
-test('buildAppSpecificUpiLinks maps standard UPI query to GPay, PhonePe, and Paytm schemes', () => {
+test('buildAppSpecificUpiLinks maps standard UPI query to GPay, iOS GPay, PhonePe, Paytm, and Android Intent', () => {
   const base = buildDynamicUpiDeepLink({
     merchantUpiId: 'skiend@axl',
     merchantName: 'Bantuu Store',
@@ -69,10 +74,16 @@ test('buildAppSpecificUpiLinks maps standard UPI query to GPay, PhonePe, and Pay
 
   assert.equal(links.upi, base);
   assert.ok(links.gpay.startsWith('tez://upi/pay?'));
+  assert.ok(links.gpayIos.startsWith('gpay://upi/pay?'));
   assert.ok(links.phonepe.startsWith('phonepe://pay?'));
   assert.ok(links.paytm.startsWith('paytmmp://pay?'));
+  assert.ok(links.androidIntent.startsWith('intent://pay?'));
   assert.ok(links.phonepe.includes('am=149.00'));
   assert.ok(links.gpay.includes('tr=TXN-1001'));
+  assert.equal(isAllowedUpiDeepLink(links.upi), true);
+  assert.equal(isAllowedUpiDeepLink(links.phonepe), true);
+  assert.equal(isAllowedUpiDeepLink(links.gpayIos), true);
+  assert.equal(isAllowedUpiDeepLink('javascript:alert(1)'), false);
 });
 
 test('generateUniqueUpiIds generates unique ORD and TXN identifiers', () => {

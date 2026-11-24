@@ -534,12 +534,33 @@
         word-break: break-all;
       }
 
+      .pay-app-primary {
+        width: 100%;
+        margin-top: 16px;
+      }
+
       .app-links-grid {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 8px;
-        margin-top: 16px;
+        margin-top: 10px;
+      }
+
+      .launch-hint {
+        display: none;
+        margin-top: 10px;
+        padding: 9px 12px;
+        border-radius: 9px;
+        background: var(--success-bg);
+        border: 1px solid var(--success-border);
+        color: var(--success-text);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .launch-hint.visible {
+        display: block;
       }
 
       .uri-preview {
@@ -777,12 +798,17 @@
                 </div>
               </div>
 
+              <a id="deepLinkUpi" href="#" class="btn btn-navy pay-app-primary">
+                Pay with UPI App
+              </a>
+
               <div class="app-links-grid">
-                <a id="deepLinkUpi" href="#" class="btn btn-navy btn-sm">Open Any UPI App</a>
                 <a id="deepLinkPhonePe" href="#" class="btn btn-outline btn-sm">PhonePe</a>
                 <a id="deepLinkGPay" href="#" class="btn btn-outline btn-sm">Google Pay</a>
                 <a id="deepLinkPaytm" href="#" class="btn btn-outline btn-sm">Paytm</a>
               </div>
+
+              <div id="launchHint" class="launch-hint" role="status" aria-live="polite"></div>
 
               <div class="uri-preview" id="upiUriPreview"></div>
 
@@ -887,6 +913,8 @@
         const deepLinkPhonePe = document.getElementById('deepLinkPhonePe');
         const deepLinkGPay = document.getElementById('deepLinkGPay');
         const deepLinkPaytm = document.getElementById('deepLinkPaytm');
+        const launchHint = document.getElementById('launchHint');
+        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent || '');
 
         const utrConfirmForm = document.getElementById('utrConfirmForm');
         const utrInput = document.getElementById('utrInput');
@@ -1068,9 +1096,16 @@
             utrInput.value = '';
 
             setSafeHref(deepLinkUpi, data.appLinks.upi, 'upi://pay?');
+            deepLinkUpi.textContent = 'Pay with UPI App — ' + formatInr(p.amount);
             setSafeHref(deepLinkPhonePe, data.appLinks.phonepe, 'phonepe://pay?');
-            setSafeHref(deepLinkGPay, data.appLinks.gpay, 'tez://upi/pay?');
+            setSafeHref(
+              deepLinkGPay,
+              isIOS && data.appLinks.gpayIos ? data.appLinks.gpayIos : data.appLinks.gpay,
+              isIOS && data.appLinks.gpayIos ? 'gpay://upi/pay?' : 'tez://upi/pay?',
+            );
             setSafeHref(deepLinkPaytm, data.appLinks.paytm, 'paytmmp://pay?');
+            launchHint.textContent = '';
+            launchHint.classList.remove('visible');
 
             startPolling();
           } catch (_) {
@@ -1080,6 +1115,48 @@
             payNowBtn.textContent = 'Pay Now & Generate UPI QR';
           }
         });
+
+        function attachUpiLaunchFeedback(anchor, appName) {
+          anchor.addEventListener('click', (e) => {
+            if (!currentSession) {
+              e.preventDefault();
+              return;
+            }
+            const targetHref = anchor.getAttribute('href') || '';
+            if (!targetHref || targetHref === '#') {
+              e.preventDefault();
+              return;
+            }
+            launchHint.textContent =
+              'Opening ' +
+              appName +
+              ' for ' +
+              formatInr(currentSession.payment.amount) +
+              '... After paying, return here (or scan the QR on desktop).';
+            launchHint.classList.add('visible');
+            if (window.Android && typeof window.Android.openExternalUrl === 'function') {
+              e.preventDefault();
+              window.Android.openExternalUrl(targetHref);
+              return;
+            }
+            if (window.AppInventor && typeof window.AppInventor.setWebViewString === 'function') {
+              window.AppInventor.setWebViewString(
+                JSON.stringify({
+                  action: 'upi_pay',
+                  app: appName,
+                  url: targetHref,
+                  amount: currentSession.payment.amount,
+                  transactionId: currentSession.payment.transactionId,
+                }),
+              );
+            }
+          });
+        }
+
+        attachUpiLaunchFeedback(deepLinkUpi, 'UPI App');
+        attachUpiLaunchFeedback(deepLinkPhonePe, 'PhonePe');
+        attachUpiLaunchFeedback(deepLinkGPay, 'Google Pay');
+        attachUpiLaunchFeedback(deepLinkPaytm, 'Paytm');
 
         copyUpiBtn.addEventListener('click', async () => {
           if (!currentSession) return;
