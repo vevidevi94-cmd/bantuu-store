@@ -158,8 +158,8 @@ export async function createDynamicUpiPayment(input: {
   }
 
   const snapshot = getStoreSnapshot();
-  const merchantUpiId = snapshot.settings.upiId || 'skiend@axl';
-  const merchantName = snapshot.settings.merchantName || snapshot.settings.storeName || 'Bantuu Store';
+  const merchantUpiId = snapshot.settings.upiId || 'Q605265018@ybl';
+  const merchantName = snapshot.settings.merchantName || 'Banti Mahto';
   const { orderId, transactionId } = generateUniqueUpiIds();
   const cleanNote = sanitizeUpiText(input.note, 50);
   const cleanCustomer = sanitizeUpiText(input.customerName, 60);
@@ -168,11 +168,8 @@ export async function createDynamicUpiPayment(input: {
   const upiUri = buildDynamicUpiDeepLink({
     merchantUpiId,
     merchantName,
-    merchantCode: snapshot.settings.upiMerchantCode,
     amount: amountCheck.amount,
     orderId,
-    transactionId,
-    note: cleanNote,
   });
 
   const qrCodeDataUrl = await QRCode.toDataURL(upiUri, {
@@ -190,10 +187,10 @@ export async function createDynamicUpiPayment(input: {
     currency: 'INR',
     merchantUpiId,
     merchantName,
-    note: cleanNote || `Order ${orderId}`,
+    note: cleanNote || orderId,
     ...(cleanCustomer ? { customerName: cleanCustomer } : {}),
     upiUri,
-    status: 'Pending',
+    status: 'Pending Verification',
     createdAt: nowIso,
     updatedAt: nowIso,
   };

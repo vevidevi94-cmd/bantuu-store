@@ -55,7 +55,9 @@ export async function runUpiStatusPollCycle(
   const rtdbUrl = options.rtdbUrl || DEFAULT_RTDB_URL;
   const autoConfirmAgeMs = options.autoConfirmAgeMs ?? 15000;
   const payments = await fetchAllUpiPaymentsFromRtdb<UpiPaymentRecord>(rtdbUrl);
-  const pending = payments.filter((p) => p.status === 'Pending' && p.transactionId);
+  const pending = payments.filter(
+    (p) => (p.status === 'Pending' || p.status === 'Pending Verification') && p.transactionId,
+  );
 
   const updatedToPaid: string[] = [];
 

@@ -36,7 +36,10 @@ const DATA_DIR = process.env.VERCEL
   : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 const DEFAULT_RTDB_URL = 'https://bantuu-store-default-rtdb.firebaseio.com';
-const DEFAULT_UPI_ID = 'skiend@axl';
+const DEFAULT_UPI_ID = 'Q605265018@ybl';
+const DEFAULT_MERCHANT_NAME = 'Banti Mahto';
+const LEGACY_UPI_IDS = new Set(['bantustore@upi', 'skiend@axl']);
+const LEGACY_MERCHANT_NAMES = new Set(['Bantuu Store Retail', 'Bantu Store Retail']);
 const DEFAULT_UPI_QR_URL = '/assets/aistudio/47084_f56d5f0a.jpg';
 const DEFAULT_CATEGORIES = [
   'Home & Living',
@@ -53,7 +56,7 @@ const SEED_DATA: StoreDatabase = {
     storeHours: DEFAULT_STORE_HOURS,
     upiId: DEFAULT_UPI_ID,
     upiQrUrl: DEFAULT_UPI_QR_URL,
-    merchantName: 'Bantuu Store Retail',
+    merchantName: DEFAULT_MERCHANT_NAME,
     freeShippingThreshold: 999,
     shippingFee: 79,
     firebaseRtdbUrl: DEFAULT_RTDB_URL,
@@ -244,8 +247,11 @@ function ensureDbInitialized(): StoreDatabase {
   parsed.settings.upiEyebrow ||= DEFAULT_PROMISE_COPY.upiEyebrow;
   parsed.settings.upiTitle ||= DEFAULT_PROMISE_COPY.upiTitle;
   parsed.settings.upiDescription ||= DEFAULT_PROMISE_COPY.upiDescription;
-  if (!parsed.settings.upiId || parsed.settings.upiId === 'bantustore@upi') {
+  if (!parsed.settings.upiId || LEGACY_UPI_IDS.has(parsed.settings.upiId.trim())) {
     parsed.settings.upiId = DEFAULT_UPI_ID;
+  }
+  if (!parsed.settings.merchantName || LEGACY_MERCHANT_NAMES.has(parsed.settings.merchantName.trim())) {
+    parsed.settings.merchantName = DEFAULT_MERCHANT_NAME;
   }
   if (!parsed.settings.upiQrUrl || parsed.settings.upiQrUrl.includes('47084_35196505')) {
     parsed.settings.upiQrUrl = DEFAULT_UPI_QR_URL;
@@ -405,9 +411,14 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
     const needsQrMigration =
       !remote.settings.upiQrUrl || remote.settings.upiQrUrl.includes('47084_35196505');
     const needsHoursMigration = !remote.settings.storeHours || !remote.settings.storeHours.trim();
+    const needsPayeeIdMigration =
+      !remote.settings.upiId || LEGACY_UPI_IDS.has(remote.settings.upiId.trim());
+    const needsMerchantNameMigration =
+      !remote.settings.merchantName ||
+      LEGACY_MERCHANT_NAMES.has(remote.settings.merchantName.trim());
     const needsUpiMigration =
-      !remote.settings.upiId ||
-      remote.settings.upiId === 'bantustore@upi' ||
+      needsPayeeIdMigration ||
+      needsMerchantNameMigration ||
       needsQrMigration ||
       needsHoursMigration;
     db.settings = {
@@ -431,10 +442,10 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
         remote.settings.upiDescription?.trim() ||
         db.settings.upiDescription ||
         DEFAULT_PROMISE_COPY.upiDescription,
-      upiId:
-        !remote.settings.upiId || remote.settings.upiId === 'bantustore@upi'
-          ? DEFAULT_UPI_ID
-          : remote.settings.upiId,
+      upiId: needsPayeeIdMigration ? DEFAULT_UPI_ID : remote.settings.upiId || DEFAULT_UPI_ID,
+      merchantName: needsMerchantNameMigration
+        ? DEFAULT_MERCHANT_NAME
+        : remote.settings.merchantName || DEFAULT_MERCHANT_NAME,
       upiQrUrl: needsQrMigration ? DEFAULT_UPI_QR_URL : remote.settings.upiQrUrl,
       firebaseRtdbUrl: remote.settings.firebaseRtdbUrl || db.settings.firebaseRtdbUrl || DEFAULT_RTDB_URL,
     };
@@ -612,6 +623,7 @@ export async function createOrderRecord(input: {
   paymentMethod: 'COD' | 'UPI';
   upiCustomerId?: string;
   upiTransactionId?: string;
+  initialStatus?: OrderStatus;
   items: Array<{ productId: string; quantity: number }>;
 }): Promise<{ order?: Order; error?: string }> {
   return runMutation(async () => {
@@ -666,6 +678,10 @@ export async function createOrderRecord(input: {
     const orderNumber = `BNT-${db.nextOrderSeq}`;
     db.nextOrderSeq += 1;
 
+    const resolvedStatus: OrderStatus =
+      input.initialStatus ||
+      (input.paymentMethod === 'UPI' ? 'Pending Verification' : 'Pending Verification');
+
     const order: Order = {
       id: `ord-${crypto.randomUUID().slice(0, 8)}`,
       orderNumber,
@@ -681,7 +697,7 @@ export async function createOrderRecord(input: {
       paymentMethod: input.paymentMethod,
       upiCustomerId: input.paymentMethod === 'UPI' ? (input.upiCustomerId || '').trim() || undefined : undefined,
       upiTransactionId: input.paymentMethod === 'UPI' ? (input.upiTransactionId || '').trim() : undefined,
-      status: 'Pending',
+      status: resolvedStatus,
       createdAt: new Date().toISOString(),
     };
 

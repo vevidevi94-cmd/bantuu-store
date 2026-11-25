@@ -39,10 +39,10 @@ test('isSafeTransactionId allows clean IDs and blocks path traversal or Firebase
   assert.equal(isSafeTransactionId('short'), false);
 });
 
-test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal @, %20 spaces, no emojis, and optional mc', () => {
+test('buildDynamicUpiDeepLink produces safe 5-parameter upi://pay URI with literal @, %20 spaces, and NO tr/url/sign', () => {
   const uri = buildDynamicUpiDeepLink({
-    merchantUpiId: 'skiend@axl',
-    merchantName: 'Bantuu Store',
+    merchantUpiId: 'Q605265018@ybl',
+    merchantName: 'Banti Mahto',
     merchantCode: '5411',
     amount: 249.5,
     orderId: 'ORD-TEST-01',
@@ -50,20 +50,25 @@ test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal
     note: 'Patanjali Biscuits🍪\n<script>',
   });
 
-  assert.ok(uri.startsWith('upi://pay?'));
-  assert.ok(uri.includes('pa=skiend@axl'), 'pa should keep literal @ for UPI apps');
-  assert.ok(uri.includes('pn=Bantuu%20Store'), 'spaces should encode as %20, not +');
-  assert.ok(uri.includes('mc=5411'), '4-digit merchant code should be included');
+  assert.equal(
+    uri,
+    'upi://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=249.50&cu=INR&tn=ORD-TEST-01',
+  );
   assert.equal(uri.includes('+'), false, 'URI should not contain + encoded spaces');
+  assert.equal(uri.includes('tr='), false, 'URI must NOT include tr parameter');
+  assert.equal(uri.includes('url='), false, 'URI must NOT include url parameter');
+  assert.equal(uri.includes('sign='), false, 'URI must NOT include sign parameter');
+  assert.equal(uri.includes('mc='), false, 'URI must keep only safe standard 5 parameters');
 
   const parsed = new URL(uri);
-  assert.equal(parsed.searchParams.get('pa'), 'skiend@axl');
-  assert.equal(parsed.searchParams.get('pn'), 'Bantuu Store');
-  assert.equal(parsed.searchParams.get('mc'), '5411');
+  assert.equal(parsed.searchParams.get('pa'), 'Q605265018@ybl');
+  assert.equal(parsed.searchParams.get('pn'), 'Banti Mahto');
   assert.equal(parsed.searchParams.get('am'), '249.50');
   assert.equal(parsed.searchParams.get('cu'), 'INR');
-  assert.equal(parsed.searchParams.get('tr'), 'TXN-TEST-99');
-  assert.equal(parsed.searchParams.get('tn'), 'ORD-TEST-01 - Patanjali Biscuits script');
+  assert.equal(parsed.searchParams.get('tn'), 'ORD-TEST-01');
+  assert.equal(parsed.searchParams.get('tr'), null);
+  assert.equal(parsed.searchParams.get('url'), null);
+  assert.equal(parsed.searchParams.get('sign'), null);
   assert.equal(formatUpiAmountParam(10), '10.00');
   assert.equal(sanitizeUpiText('  Hello\t<b>World</b>🍪  ', 20), 'Hello b World /b');
   assert.equal(sanitizeMerchantCode('5411'), '5411');
@@ -82,27 +87,29 @@ test('decodePngDataUrl decodes valid base64 PNG data URLs and rejects invalid in
   assert.equal(UPI_APP_PACKAGES.paytm.androidPackage, 'net.one97.paytm');
 });
 
-test('buildAppSpecificUpiLinks maps standard UPI query to GPay, iOS GPay, PhonePe, Paytm, and Android Intent', () => {
+test('buildAppSpecificUpiLinks maps safe standard UPI query to PhonePe, Google Pay, Paytm, and Any UPI App', () => {
   const base = buildDynamicUpiDeepLink({
-    merchantUpiId: 'skiend@axl',
-    merchantName: 'Bantuu Store',
+    merchantUpiId: 'Q605265018@ybl',
+    merchantName: 'Banti Mahto',
     amount: 149,
     orderId: 'ORD-1001',
-    transactionId: 'TXN-1001',
   });
   const links = buildAppSpecificUpiLinks(base);
+  const expectedQuery = 'pa=Q605265018@ybl&pn=Banti%20Mahto&am=149.00&cu=INR&tn=ORD-1001';
 
-  assert.equal(links.upi, base);
-  assert.ok(links.gpay.startsWith('tez://upi/pay?'));
-  assert.ok(links.gpayIos.startsWith('gpay://upi/pay?'));
-  assert.ok(links.phonepe.startsWith('phonepe://pay?'));
-  assert.ok(links.paytm.startsWith('paytmmp://pay?'));
-  assert.ok(links.androidIntent.startsWith('intent://pay?'));
-  assert.ok(links.phonepe.includes('am=149.00'));
-  assert.ok(links.gpay.includes('tr=TXN-1001'));
+  assert.equal(links.upi, `upi://pay?${expectedQuery}`);
+  assert.equal(links.phonepe, `phonepe://pay?${expectedQuery}`);
+  assert.equal(links.gpay, `tez://upi/pay?${expectedQuery}`);
+  assert.equal(links.gpayIos, `gpay://upi/pay?${expectedQuery}`);
+  assert.equal(links.paytm, `paytmmp://pay?${expectedQuery}`);
+  assert.ok(links.androidIntent.startsWith(`intent://pay?${expectedQuery}`));
+  assert.equal(links.phonepe.includes('tr='), false);
+  assert.equal(links.gpay.includes('url='), false);
+  assert.equal(links.paytm.includes('sign='), false);
   assert.equal(isAllowedUpiDeepLink(links.upi), true);
   assert.equal(isAllowedUpiDeepLink(links.phonepe), true);
-  assert.equal(isAllowedUpiDeepLink(links.gpayIos), true);
+  assert.equal(isAllowedUpiDeepLink(links.gpay), true);
+  assert.equal(isAllowedUpiDeepLink(links.paytm), true);
   assert.equal(isAllowedUpiDeepLink('javascript:alert(1)'), false);
 });
 
@@ -137,11 +144,11 @@ test('verifyTransactionStatusToken validates derived HMAC token even after serve
     orderId: 'ORD-COLDSTART-99',
     amount: 99,
     currency: 'INR' as const,
-    merchantUpiId: 'skiend@axl',
-    merchantName: 'Bantuu Store',
-    note: 'Order ORD-COLDSTART-99',
-    upiUri: 'upi://pay?pa=skiend@axl',
-    status: 'Pending' as const,
+    merchantUpiId: 'Q605265018@ybl',
+    merchantName: 'Banti Mahto',
+    note: 'ORD-COLDSTART-99',
+    upiUri: 'upi://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=99.00&cu=INR&tn=ORD-COLDSTART-99',
+    status: 'Pending Verification' as const,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

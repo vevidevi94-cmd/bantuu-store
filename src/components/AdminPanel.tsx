@@ -83,6 +83,8 @@ interface AdminPanelProps {
 }
 
 const ORDER_STATUSES: OrderStatus[] = [
+  'Pending Verification',
+  'Paid',
   'Pending',
   'Confirmed',
   'Shipped',
@@ -494,7 +496,9 @@ export function AdminPanel({
     const totalRevenue = orders
       .filter((o) => o.status !== 'Cancelled')
       .reduce((sum, o) => sum + o.total, 0);
-    const pendingCount = orders.filter((o) => o.status === 'Pending').length;
+    const pendingCount = orders.filter(
+      (o) => o.status === 'Pending' || o.status === 'Pending Verification',
+    ).length;
     const codCount = orders.filter((o) => o.paymentMethod === 'COD').length;
     const upiCount = orders.filter((o) => o.paymentMethod === 'UPI').length;
     return { totalRevenue, pendingCount, codCount, upiCount };
@@ -2510,7 +2514,7 @@ export function AdminPanel({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="set-upi-id" className="block text-xs font-medium text-[#3E4756] mb-1.5">
                     Merchant UPI ID (shown at checkout)
@@ -2520,7 +2524,7 @@ export function AdminPanel({
                     type="text"
                     value={setUpiId}
                     onChange={(e) => setSetUpiId(e.target.value)}
-                    placeholder="skiend@axl or Q...@ybl"
+                    placeholder="Q605265018@ybl"
                     className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>
@@ -2533,27 +2537,13 @@ export function AdminPanel({
                     type="text"
                     value={setMerchantName}
                     onChange={(e) => setSetMerchantName(e.target.value)}
+                    placeholder="Banti Mahto"
                     className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="set-upi-mcc" className="block text-xs font-medium text-[#3E4756] mb-1.5">
-                    Merchant Code / MCC (Optional)
-                  </label>
-                  <input
-                    id="set-upi-mcc"
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={setUpiMerchantCode}
-                    onChange={(e) => setSetUpiMerchantCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    placeholder="e.g. 5411"
-                    className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>
               </div>
               <p className="text-[11px] text-[#5C5852] -mt-2">
-                Tip: For direct one-tap PhonePe/GPay/Paytm payments without UPI Risk Policy errors, use a free Business Merchant UPI ID (PhonePe Business / Paytm for Business) and 4-digit MCC (e.g. <span className="font-mono">5411</span> for Grocery or <span className="font-mono">5999</span> for Retail).
+                Default verified payee: <span className="font-mono font-semibold text-[#0F1D32]">Q605265018@ybl</span> (<span className="font-medium text-[#0F1D32]">Banti Mahto</span>). Checkout UPI links use only safe standard parameters (<span className="font-mono">pa, pn, am, cu, tn</span>) so PhonePe, Google Pay, and Paytm open without risk policy blocks.
               </p>
 
               <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] flex flex-col sm:flex-row items-start sm:items-center gap-4">

@@ -798,15 +798,15 @@
                 </div>
               </div>
 
-              <a id="deepLinkUpi" href="#" class="btn btn-navy pay-app-primary">
-                Pay with UPI App
-              </a>
-
               <div class="app-links-grid">
                 <a id="deepLinkPhonePe" href="#" class="btn btn-outline btn-sm">PhonePe</a>
                 <a id="deepLinkGPay" href="#" class="btn btn-outline btn-sm">Google Pay</a>
                 <a id="deepLinkPaytm" href="#" class="btn btn-outline btn-sm">Paytm</a>
               </div>
+
+              <a id="deepLinkUpi" href="#" class="btn btn-navy pay-app-primary">
+                Pay with Any UPI App
+              </a>
 
               <div id="launchHint" class="launch-hint" role="status" aria-live="polite"></div>
 
@@ -1022,13 +1022,14 @@
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (data && data.settings && data.settings.upiId) {
-              merchantMeta.textContent = 'Merchant UPI: ' + data.settings.upiId;
+              const name = data.settings.merchantName || 'Banti Mahto';
+              merchantMeta.textContent = 'Merchant UPI: ' + data.settings.upiId + ' · ' + name;
             } else {
-              merchantMeta.textContent = 'Merchant UPI: skiend@axl';
+              merchantMeta.textContent = 'Merchant UPI: Q605265018@ybl · Banti Mahto';
             }
           })
           .catch(() => {
-            merchantMeta.textContent = 'Merchant UPI: skiend@axl';
+            merchantMeta.textContent = 'Merchant UPI: Q605265018@ybl · Banti Mahto';
           });
 
         // Quick amount presets
@@ -1096,7 +1097,7 @@
             utrInput.value = '';
 
             setSafeHref(deepLinkUpi, data.appLinks.upi, 'upi://pay?');
-            deepLinkUpi.textContent = 'Pay with UPI App — ' + formatInr(p.amount);
+            deepLinkUpi.textContent = 'Pay with Any UPI App — ' + formatInr(p.amount);
             setSafeHref(deepLinkPhonePe, data.appLinks.phonepe, 'phonepe://pay?');
             setSafeHref(
               deepLinkGPay,
@@ -1136,16 +1137,6 @@
             const shareText = 'Pay ' + formatInr(p.amount) + ' to ' + p.merchantUpiId;
             const targetHref = anchor.getAttribute('href') || '';
 
-            // Inside native Android APK: silently open the target UPI app directly with QR image (zero Share popup)
-            if (window.Android && typeof window.Android.shareQrToApp === 'function') {
-              e.preventDefault();
-              window.Android.shareQrToApp(fullDownloadUrl, target.pkg, shareText);
-              launchHint.textContent =
-                'Opening ' + target.label + ' for ' + formatInr(p.amount) + '...';
-              launchHint.classList.add('visible');
-              return;
-            }
-
             if (!targetHref || targetHref === '#') {
               e.preventDefault();
               return;
@@ -1154,6 +1145,15 @@
             if (window.Android && typeof window.Android.openExternalUrl === 'function') {
               e.preventDefault();
               window.Android.openExternalUrl(targetHref);
+              launchHint.textContent =
+                'Opening ' + target.label + ' for ' + formatInr(p.amount) + '...';
+              launchHint.classList.add('visible');
+              return;
+            }
+
+            if (window.Android && typeof window.Android.shareQrToApp === 'function') {
+              e.preventDefault();
+              window.Android.shareQrToApp(fullDownloadUrl, target.pkg, shareText);
               launchHint.textContent =
                 'Opening ' + target.label + ' for ' + formatInr(p.amount) + '...';
               launchHint.classList.add('visible');
@@ -1223,6 +1223,14 @@
             if (!res.ok) {
               showError(confirmError, data.error || 'Could not confirm payment.');
               return;
+            }
+            if (data.payment && data.payment.status === 'Pending Verification') {
+              statusLabel.textContent = 'Status: Pending Verification';
+              launchHint.textContent =
+                'UTR ' +
+                (data.payment.utr || '') +
+                ' saved in Firebase RTDB with status Pending Verification.';
+              launchHint.classList.add('visible');
             }
             // Let the active poller or immediate update transition cleanly to Paid
             await pollPaymentStatus();

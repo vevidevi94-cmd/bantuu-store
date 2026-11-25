@@ -133,18 +133,15 @@ test('validateProductForm requires name, price, stock, description, and media', 
   assert.deepEqual(valid, {});
 });
 
-test('buildUpiPaymentUri builds standard UPI deeplink and PhonePe deeplink', () => {
-  const uri = buildUpiPaymentUri('bantustore@upi', 'Bantu Store', 1899, 'Order BNT-1005');
-  assert.ok(uri.startsWith('upi://pay?'));
-  assert.ok(uri.includes('pa=bantustore%40upi'));
-  assert.ok(uri.includes('am=1899'));
-  assert.ok(uri.includes('cu=INR'));
+test('buildUpiPaymentUri builds safe 5-parameter standard UPI and PhonePe deeplinks', () => {
+  const uri = buildUpiPaymentUri('Q605265018@ybl', 'Banti Mahto', 1899, 'ORD-1005');
+  assert.equal(uri, 'upi://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=1899.00&cu=INR&tn=ORD-1005');
 
-  const phonePeUri = buildPhonePePaymentUri('skiend@axl', 'Bantuu Store Retail', 2499, 'Bantuu Store Order');
-  assert.ok(phonePeUri.startsWith('phonepe://pay?'));
-  assert.ok(phonePeUri.includes('pa=skiend%40axl'));
-  assert.ok(phonePeUri.includes('am=2499'));
-  assert.ok(phonePeUri.includes('cu=INR'));
+  const phonePeUri = buildPhonePePaymentUri('Q605265018@ybl', 'Banti Mahto', 2499, 'ORD-1006');
+  assert.equal(
+    phonePeUri,
+    'phonepe://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=2499.00&cu=INR&tn=ORD-1006',
+  );
 });
 
 test('filterProducts and filterOrders match category, status, payment, and search query', () => {

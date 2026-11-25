@@ -33,7 +33,14 @@ export interface CartItem {
 
 export type PaymentMethod = 'COD' | 'UPI';
 
-export type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Cancelled';
+export type OrderStatus =
+  | 'Pending Verification'
+  | 'Paid'
+  | 'Pending'
+  | 'Confirmed'
+  | 'Shipped'
+  | 'Delivered'
+  | 'Cancelled';
 
 export interface OrderItem {
   productId: string;
@@ -63,6 +70,8 @@ export interface Order {
 }
 
 export const DEFAULT_STORE_HOURS = 'Store open at 6:00 am close at 8:30 pm';
+export const DEFAULT_UPI_ID = 'Q605265018@ybl';
+export const DEFAULT_MERCHANT_NAME = 'Banti Mahto';
 
 export const DEFAULT_PROMISE_COPY = {
   codEyebrow: '01. Cash on Delivery',
@@ -287,20 +296,33 @@ export function sortProductsWithPinned(products: Product[]): Product[] {
   });
 }
 
+function formatSafeUpiQuery(
+  upiId: string,
+  merchantName: string,
+  amount: number,
+  orderNote: string,
+): string {
+  const pa = (upiId.trim() || DEFAULT_UPI_ID).replace(/[^\x20-\x7E]/g, '').slice(0, 80);
+  const pn = (merchantName.trim() || DEFAULT_MERCHANT_NAME).replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const rounded = Math.round(Math.max(1, Number.isFinite(amount) ? amount : 1) * 100) / 100;
+  const am = rounded.toFixed(2);
+  const tn = (orderNote.trim() || 'ORDER').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return [
+    `pa=${encodeURIComponent(pa).replace(/%40/gi, '@')}`,
+    `pn=${encodeURIComponent(pn)}`,
+    `am=${encodeURIComponent(am)}`,
+    'cu=INR',
+    `tn=${encodeURIComponent(tn)}`,
+  ].join('&');
+}
+
 export function buildUpiPaymentUri(
   upiId: string,
   merchantName: string,
   amount: number,
   orderNote: string,
 ): string {
-  const params = new URLSearchParams({
-    pa: upiId.trim(),
-    pn: merchantName.trim() || 'Bantu Store',
-    am: Math.max(1, Math.round(amount)).toString(),
-    cu: 'INR',
-    tn: orderNote.trim() || 'Bantu Store Order',
-  });
-  return `upi://pay?${params.toString()}`;
+  return `upi://pay?${formatSafeUpiQuery(upiId, merchantName, amount, orderNote)}`;
 }
 
 export function buildPhonePePaymentUri(
@@ -309,14 +331,7 @@ export function buildPhonePePaymentUri(
   amount: number,
   orderNote: string,
 ): string {
-  const params = new URLSearchParams({
-    pa: upiId.trim(),
-    pn: merchantName.trim() || 'Bantu Store',
-    am: Math.max(1, Math.round(amount)).toString(),
-    cu: 'INR',
-    tn: orderNote.trim() || 'Bantu Store Order',
-  });
-  return `phonepe://pay?${params.toString()}`;
+  return `phonepe://pay?${formatSafeUpiQuery(upiId, merchantName, amount, orderNote)}`;
 }
 
 export function filterProducts(products: Product[], category: string, query: string): Product[] {

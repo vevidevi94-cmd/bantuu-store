@@ -1,4 +1,7 @@
-export type UpiPaymentStatus = 'Pending' | 'Paid' | 'Failed' | 'Expired';
+export type UpiPaymentStatus = 'Pending' | 'Pending Verification' | 'Paid' | 'Failed' | 'Expired';
+
+export const DEFAULT_MERCHANT_UPI_ID = 'Q605265018@ybl';
+export const DEFAULT_MERCHANT_NAME = 'Banti Mahto';
 
 export interface UpiPaymentRecord {
   transactionId: string;
@@ -24,7 +27,7 @@ export interface UpiDeepLinkParams {
   merchantCode?: string;
   amount: number;
   orderId: string;
-  transactionId: string;
+  transactionId?: string;
   note?: string;
 }
 
@@ -55,7 +58,7 @@ export function validateUpiPaymentAmount(raw: unknown): {
 
 export function formatUpiAmountParam(amount: number): string {
   const rounded = Math.round(Math.max(1, amount) * 100) / 100;
-  return Number.isInteger(rounded) ? rounded.toFixed(2) : rounded.toFixed(2);
+  return rounded.toFixed(2);
 }
 
 export function sanitizeUpiText(value: unknown, maxLen = 60): string {
@@ -109,23 +112,22 @@ export function sanitizeMerchantCode(value: unknown): string {
   return digits.length === 4 ? digits : '';
 }
 
+/**
+ * Builds a clean, safe standard UPI Deep Link URI using ONLY:
+ * pa, pn, am (2 decimals), cu=INR, tn={orderId}.
+ * Intentionally omits tr, url, and sign so UPI apps do not block payments with risk policy errors.
+ */
 export function buildDynamicUpiDeepLink(input: UpiDeepLinkParams): string {
-  const pa = sanitizeUpiText(input.merchantUpiId, 80);
-  const pn = sanitizeUpiText(input.merchantName, 60) || 'Bantuu Store';
-  const mc = sanitizeMerchantCode(input.merchantCode);
-  const tr = sanitizeUpiText(input.transactionId, 40);
-  const orderId = sanitizeUpiText(input.orderId, 40);
-  const customNote = sanitizeUpiText(input.note, 50);
-  const tn = customNote ? `${orderId} - ${customNote}`.slice(0, 80) : `Order ${orderId}`;
+  const pa = sanitizeUpiText(input.merchantUpiId, 80) || DEFAULT_MERCHANT_UPI_ID;
+  const pn = sanitizeUpiText(input.merchantName, 60) || DEFAULT_MERCHANT_NAME;
+  const orderId = sanitizeUpiText(input.orderId, 40) || 'ORDER';
 
   const queryParts = [
     `pa=${encodeUpiParamValue(pa, true)}`,
     `pn=${encodeUpiParamValue(pn)}`,
-    ...(mc ? [`mc=${mc}`] : []),
     `am=${encodeUpiParamValue(formatUpiAmountParam(input.amount))}`,
     'cu=INR',
-    `tr=${encodeUpiParamValue(tr)}`,
-    `tn=${encodeUpiParamValue(tn)}`,
+    `tn=${encodeUpiParamValue(orderId)}`,
   ];
 
   return `upi://pay?${queryParts.join('&')}`;

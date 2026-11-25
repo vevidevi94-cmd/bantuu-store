@@ -23,12 +23,24 @@ function StatusProgressBar({ status }: { status: OrderStatus }) {
     );
   }
 
-  const currentIdx = Math.max(0, PROGRESS_STEPS.indexOf(status));
+  const normalizedIdx =
+    status === 'Pending Verification'
+      ? 0
+      : status === 'Paid'
+        ? 1
+        : Math.max(0, PROGRESS_STEPS.indexOf(status));
+  const currentIdx = normalizedIdx;
+  const stepLabels = [
+    status === 'Pending Verification' ? 'Pending Verification' : 'Pending',
+    status === 'Paid' ? 'Paid' : 'Confirmed',
+    'Shipped',
+    'Delivered',
+  ];
 
   return (
     <div className="pt-2.5">
       <div className="grid grid-cols-4 gap-1.5">
-        {PROGRESS_STEPS.map((step, idx) => {
+        {stepLabels.map((step, idx) => {
           const reached = idx <= currentIdx;
           return (
             <div key={step} className="space-y-1">

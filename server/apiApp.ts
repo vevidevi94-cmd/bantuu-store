@@ -225,17 +225,21 @@ export function createApiApp(): Express {
       const rawAmount = Number(req.query.amount);
       const dispositionType = req.query.inline === '1' ? 'inline' : 'attachment';
       if (Number.isFinite(rawAmount) && rawAmount > 0) {
-        const amount = Math.round(rawAmount);
+        const amount = Math.round(rawAmount * 100) / 100;
+        const orderNote =
+          typeof req.query.orderId === 'string' && req.query.orderId.trim()
+            ? req.query.orderId.trim()
+            : `ORD-${Date.now().toString(36).toUpperCase()}`;
         const upiUri = buildUpiPaymentUri(
-          db.settings.upiId,
-          db.settings.merchantName,
+          db.settings.upiId || 'Q605265018@ybl',
+          db.settings.merchantName || 'Banti Mahto',
           amount,
-          `${db.settings.storeName} Order`,
+          orderNote,
         );
         const qrPng = await QRCode.toBuffer(upiUri, {
           type: 'png',
           width: 640,
-          margin: 2,
+          margin: 4,
           color: { dark: '#0F1D32', light: '#FFFFFF' },
           errorCorrectionLevel: 'M',
         });
@@ -357,7 +361,7 @@ export function createApiApp(): Express {
           .replace(/'/g, '&#39;');
 
       const safeStore = esc(db.settings.storeName || 'Bantuu Store');
-      const safeUpiId = esc(db.settings.upiId || 'skiend@axl');
+      const safeUpiId = esc(db.settings.upiId || 'Q605265018@ybl');
       const amountQuery = amount > 0 ? `amount=${amount}` : '';
       const imgSrc = `/api/upi-qr/download?${amountQuery ? `${amountQuery}&` : ''}inline=1`;
       const dlSrc = `/api/upi-qr/download${amountQuery ? `?${amountQuery}` : ''}`;
@@ -408,9 +412,9 @@ export function createApiApp(): Express {
   <script>
     const imgUrl = ${JSON.stringify(imgSrc)};
     const dlFileName = ${JSON.stringify(fileName)};
-    const upiId = ${JSON.stringify(db.settings.upiId || 'skiend@axl')};
+    const upiId = ${JSON.stringify(db.settings.upiId || 'Q605265018@ybl')};
     const storeName = ${JSON.stringify(db.settings.storeName || 'Bantuu Store')};
-    const amountText = ${JSON.stringify(amount > 0 ? `Pay ₹${amount} to ${db.settings.upiId || 'skiend@axl'}` : `Pay via UPI to ${db.settings.upiId || 'skiend@axl'}`)};
+    const amountText = ${JSON.stringify(amount > 0 ? `Pay ₹${amount} to ${db.settings.upiId || 'Q605265018@ybl'}` : `Pay via UPI to ${db.settings.upiId || 'Q605265018@ybl'}`)};
     const statusEl = document.getElementById('statusMsg');
 
     async function shareQrNow() {
@@ -617,15 +621,37 @@ export function createApiApp(): Express {
         }))
       : [];
 
+    const paymentMethod = body.paymentMethod === 'UPI' ? 'UPI' : 'COD';
+    const upiSessionTransactionId =
+      typeof body.upiSessionTransactionId === 'string'
+        ? body.upiSessionTransactionId.trim()
+        : '';
+
+    let initialStatus: OrderStatus = 'Pending Verification';
+    if (paymentMethod === 'UPI' && isSafeTransactionId(upiSessionTransactionId)) {
+      const existingUpi = await getDynamicUpiPayment(upiSessionTransactionId).catch(() => null);
+      if (existingUpi && existingUpi.status === 'Paid') {
+        initialStatus = 'Paid';
+      } else if (existingUpi && body.upiTransactionId) {
+        await updateDynamicUpiPaymentStatus({
+          transactionId: upiSessionTransactionId,
+          status: 'Pending Verification',
+          utr: String(body.upiTransactionId),
+          providerRef: 'UTR-SUBMITTED',
+        }).catch(() => undefined);
+      }
+    }
+
     const result = await createOrderRecord({
       customerName: String(body.customerName),
       customerPhone: String(body.customerPhone),
       address: String(body.address),
       city: String(body.city),
       pincode: String(body.pincode),
-      paymentMethod: body.paymentMethod === 'UPI' ? 'UPI' : 'COD',
+      paymentMethod,
       upiCustomerId: body.upiCustomerId ? String(body.upiCustomerId) : undefined,
       upiTransactionId: body.upiTransactionId ? String(body.upiTransactionId) : undefined,
+      initialStatus,
       items: requestedItems,
     });
 
@@ -638,7 +664,15 @@ export function createApiApp(): Express {
   });
 
   app.patch('/api/orders/:id/status', requireAdminMiddleware, async (req, res) => {
-    const allowed: OrderStatus[] = ['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Cancelled'];
+    const allowed: OrderStatus[] = [
+      'Pending Verification',
+      'Paid',
+      'Pending',
+      'Confirmed',
+      'Shipped',
+      'Delivered',
+      'Cancelled',
+    ];
     const status = req.body?.status as OrderStatus;
     if (!allowed.includes(status)) {
       res.status(400).json({ error: 'Invalid order status.' });
@@ -819,7 +853,13 @@ export function createApiApp(): Express {
       const body = req.body || {};
       const transactionId = String(body.transactionId || '').trim();
       const rawStatus = String(body.status || 'Paid').trim();
-      const allowedStatuses: UpiPaymentStatus[] = ['Paid', 'Failed', 'Expired', 'Pending'];
+      const allowedStatuses: UpiPaymentStatus[] = [
+        'Paid',
+        'Pending Verification',
+        'Failed',
+        'Expired',
+        'Pending',
+      ];
       if (!allowedStatuses.includes(rawStatus as UpiPaymentStatus)) {
         res.status(400).json({ error: 'Invalid payment status value.' });
         return;
@@ -885,22 +925,29 @@ export function createApiApp(): Express {
       }
 
       const isSimulate = Boolean(body.simulate);
+      const isAdmin = isRequestAdminAuthenticated(req);
       const rawUtr = typeof body.utr === 'string' ? body.utr.trim() : '';
       if (!isSimulate && rawUtr.length < 6) {
         res.status(400).json({
-          error: 'Enter a valid UPI UTR / Reference number (minimum 6 characters).',
+          error: 'Enter a valid 12-digit UPI UTR / Reference number (minimum 6 characters).',
         });
         return;
       }
 
       const finalUtr =
         rawUtr || `4${Math.floor(10000000000 + Math.random() * 89999999999)}`;
+      const nextStatus: UpiPaymentStatus =
+        isSimulate || isAdmin ? 'Paid' : 'Pending Verification';
 
       const updated = await updateDynamicUpiPaymentStatus({
         transactionId,
-        status: 'Paid',
+        status: nextStatus,
         utr: finalUtr,
-        providerRef: isSimulate ? 'SIMULATED-WEBHOOK' : 'UTR-CONFIRMED',
+        providerRef: isSimulate
+          ? 'SIMULATED-WEBHOOK'
+          : isAdmin
+            ? 'ADMIN-VERIFIED'
+            : 'UTR-SUBMITTED',
       });
 
       if (!updated.ok) {
@@ -909,7 +956,7 @@ export function createApiApp(): Express {
       }
 
       res.json({
-        confirmed: true,
+        confirmed: nextStatus === 'Paid',
         payment: updated.payment,
         rtdbSynced: updated.rtdbSynced,
       });

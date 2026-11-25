@@ -57,9 +57,9 @@ interface BantuuHistoryState {
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: 'Bantuu Store',
   storeHours: DEFAULT_STORE_HOURS,
-  upiId: 'skiend@axl',
+  upiId: 'Q605265018@ybl',
   upiQrUrl: '/assets/aistudio/47084_f56d5f0a.jpg',
-  merchantName: 'Bantuu Store Retail',
+  merchantName: 'Banti Mahto',
   freeShippingThreshold: 999,
   shippingFee: 79,
   ...DEFAULT_PROMISE_COPY,

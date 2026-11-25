@@ -171,25 +171,17 @@ export function CheckoutModal({
     () => `ORD-${safePayableAmount}-${Date.now().toString(36).toUpperCase().slice(-5)}`,
     [safePayableAmount],
   );
+  const effectiveUpiId = settings.upiId || 'Q605265018@ybl';
+  const effectiveMerchantName = settings.merchantName || 'Banti Mahto';
   const fallbackUpiUri = useMemo(
     () =>
       buildDynamicUpiDeepLink({
-        merchantUpiId: settings.upiId,
-        merchantName: settings.merchantName || settings.storeName,
-        merchantCode: settings.upiMerchantCode,
+        merchantUpiId: effectiveUpiId,
+        merchantName: effectiveMerchantName,
         amount: safePayableAmount,
         orderId: fallbackTxnRef,
-        transactionId: `TXN-${fallbackTxnRef}`,
-        note: `${settings.storeName} Order`,
       }),
-    [
-      settings.upiId,
-      settings.merchantName,
-      settings.storeName,
-      settings.upiMerchantCode,
-      safePayableAmount,
-      fallbackTxnRef,
-    ],
+    [effectiveUpiId, effectiveMerchantName, safePayableAmount, fallbackTxnRef],
   );
   const activeUpiUri = upiSession?.payment.upiUri || fallbackUpiUri;
   const activeAppLinks = useMemo(
@@ -347,7 +339,7 @@ export function CheckoutModal({
 
   const handleCopyUpi = async () => {
     try {
-      await navigator.clipboard.writeText(settings.upiId);
+      await navigator.clipboard.writeText(effectiveUpiId);
       setCopiedUpi(true);
       window.setTimeout(() => setCopiedUpi(false), 1800);
     } catch {
@@ -377,7 +369,7 @@ export function CheckoutModal({
   ) => {
     const target = UPI_APP_PACKAGES[appKey];
     const fullDownloadUrl = `${window.location.origin}${qrDownloadEndpoint}`;
-    const shareText = `Pay ${formatINR(totals.total)} to ${settings.upiId}`;
+    const shareText = `Pay ${formatINR(totals.total)} to ${effectiveUpiId}`;
 
     const win = window as unknown as {
       Android?: {
@@ -389,24 +381,24 @@ export function CheckoutModal({
       };
     };
 
-    // 1. Inside native Android APK: silently open the target UPI app directly with the QR image (auto-scan, zero Share popup)
-    if (typeof win.Android?.shareQrToApp === 'function') {
+    if (!isAllowedUpiDeepLink(directUri)) {
       e.preventDefault();
-      win.Android.shareQrToApp(fullDownloadUrl, target.androidPackage, shareText);
+      return;
+    }
+
+    // 1. Inside native Android APK: open the safe standard UPI deep link directly
+    if (typeof win.Android?.openExternalUrl === 'function') {
+      e.preventDefault();
+      win.Android.openExternalUrl(directUri);
       setUpiAppLaunchMsg(
         `Opening ${target.label} for ${formatINR(totals.total)}... After paying, enter your 12-digit UTR below.`,
       );
       return;
     }
 
-    if (!isAllowedUpiDeepLink(directUri)) {
+    if (typeof win.Android?.shareQrToApp === 'function') {
       e.preventDefault();
-      return;
-    }
-
-    if (typeof win.Android?.openExternalUrl === 'function') {
-      e.preventDefault();
-      win.Android.openExternalUrl(directUri);
+      win.Android.shareQrToApp(fullDownloadUrl, target.androidPackage, shareText);
       setUpiAppLaunchMsg(
         `Opening ${target.label} for ${formatINR(totals.total)}... After paying, enter your 12-digit UTR below.`,
       );
@@ -422,13 +414,13 @@ export function CheckoutModal({
           upiUri: directUri,
           qrUrl: fullDownloadUrl,
           amount: safePayableAmount,
-          upiId: settings.upiId,
+          upiId: effectiveUpiId,
           transactionId: upiSession?.payment.transactionId || '',
         }),
       );
     }
 
-    // 2. Mobile Chrome / Safari: allow native <a> href to open PhonePe / GPay / Paytm directly (NO Share sheet popup)
+    // 2. Mobile Chrome / Safari: allow native <a> href to open PhonePe / GPay / Paytm / Any UPI App directly
     setUpiAppLaunchMsg(
       `Opening ${target.label} for ${formatINR(totals.total)}... After paying, enter your 12-digit UTR below.`,
     );
@@ -508,7 +500,7 @@ export function CheckoutModal({
       if (typeof win.Android?.shareFile === 'function') {
         win.Android.shareFile(
           fullDownloadUrl,
-          `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+          `Pay ${formatINR(totals.total)} to ${effectiveUpiId}`,
         );
         setQrStatusMsg('Sharing QR via app...');
         return;
@@ -521,8 +513,8 @@ export function CheckoutModal({
             url: fullDownloadUrl,
             shareUrl: fullShareUrl,
             amount: safePayableAmount,
-            upiId: settings.upiId,
-            text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+            upiId: effectiveUpiId,
+            text: `Pay ${formatINR(totals.total)} to ${effectiveUpiId}`,
           }),
         );
       }
@@ -532,7 +524,7 @@ export function CheckoutModal({
         if (file && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
           await navigator.share({
             title: `${settings.storeName} UPI QR`,
-            text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+            text: `Pay ${formatINR(totals.total)} to ${effectiveUpiId}`,
             files: [file],
           });
           setQrStatusMsg('QR shared — select your UPI app or Gallery.');
@@ -540,7 +532,7 @@ export function CheckoutModal({
         }
         await navigator.share({
           title: `${settings.storeName} UPI QR`,
-          text: `Pay ${formatINR(totals.total)} to ${settings.upiId}`,
+          text: `Pay ${formatINR(totals.total)} to ${effectiveUpiId}`,
           url: fullShareUrl,
         });
         setQrStatusMsg('QR link shared.');
@@ -595,6 +587,8 @@ export function CheckoutModal({
           paymentMethod,
           upiCustomerId: paymentMethod === 'UPI' ? upiCustomerId : undefined,
           upiTransactionId: paymentMethod === 'UPI' ? upiTransactionId : undefined,
+          upiSessionTransactionId:
+            paymentMethod === 'UPI' ? upiSession?.payment.transactionId : undefined,
           items: items.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -940,21 +934,11 @@ export function CheckoutModal({
                         ) : null}
                       </div>
 
-                      <a
-                        href={activeAppLinks.upi}
-                        onClick={(e) => handleDirectUpiApp(e, 'any', activeAppLinks.upi)}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#0F1D32] text-[#F7F5EE] text-sm font-semibold hover:bg-[#172A46] transition-colors cursor-pointer"
-                      >
-                        <Smartphone className="w-4 h-4 text-[#C6A45C]" />
-                        <span>Pay with UPI App — {formatINR(totals.total)}</span>
-                        <ExternalLink className="w-3.5 h-3.5 text-[#C6A45C]" />
-                      </a>
-
                       <div className="grid grid-cols-3 gap-2">
                         <a
                           href={activeAppLinks.phonepe}
                           onClick={(e) => handleDirectUpiApp(e, 'phonepe', activeAppLinks.phonepe)}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2.5 rounded-lg border border-[#0F1D32]/20 bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
                         >
                           <span>PhonePe</span>
                         </a>
@@ -967,18 +951,28 @@ export function CheckoutModal({
                               isIOSDevice ? activeAppLinks.gpayIos : activeAppLinks.gpay,
                             )
                           }
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2.5 rounded-lg border border-[#0F1D32]/20 bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
                         >
                           <span>Google Pay</span>
                         </a>
                         <a
                           href={activeAppLinks.paytm}
                           onClick={(e) => handleDirectUpiApp(e, 'paytm', activeAppLinks.paytm)}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-2.5 rounded-lg border border-[#0F1D32]/20 bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
                         >
                           <span>Paytm</span>
                         </a>
                       </div>
+
+                      <a
+                        href={activeAppLinks.upi}
+                        onClick={(e) => handleDirectUpiApp(e, 'any', activeAppLinks.upi)}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#0F1D32] text-[#F7F5EE] text-sm font-semibold hover:bg-[#172A46] transition-colors cursor-pointer"
+                      >
+                        <Smartphone className="w-4 h-4 text-[#C6A45C]" />
+                        <span>Pay with Any UPI App — {formatINR(totals.total)}</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-[#C6A45C]" />
+                      </a>
 
                       {upiAppLaunchMsg && (
                         <p className="text-[11px] font-medium text-[#065F46] bg-[#ECFDF5] border border-[#6EE7B7]/60 rounded-lg px-2.5 py-1.5">
@@ -1015,7 +1009,7 @@ export function CheckoutModal({
                             </span>
                             <img
                               src={activeQrSrc}
-                              alt={`Scan to pay ${formatINR(totals.total)} to ${settings.upiId} via UPI`}
+                              alt={`Scan to pay ${formatINR(totals.total)} to ${effectiveUpiId} via UPI`}
                               onError={() => setQrLoadError(true)}
                               className="w-40 h-40 sm:w-44 sm:h-44 object-contain rounded-lg bg-white"
                             />
@@ -1028,11 +1022,11 @@ export function CheckoutModal({
                           <span>Scan QR with PhonePe, GPay, Paytm or BHIM</span>
                         </div>
                         <p className="text-[11px] text-[#5C5852]">
-                          India Post Payment Bank · Bantuu Store
+                          {effectiveMerchantName} · Verified PhonePe Business Merchant
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
                           <code className="px-2.5 py-1.5 rounded bg-white border border-[#DED8C8] text-xs font-mono font-semibold text-[#0F1D32]">
-                            {settings.upiId}
+                            {effectiveUpiId}
                           </code>
                           <button
                             type="button"
@@ -1042,12 +1036,12 @@ export function CheckoutModal({
                             {copiedUpi ? (
                               <>
                                 <Check className="w-3.5 h-3.5 text-[#8A6D32]" />
-                                <span>Copied</span>
+                                <span>Copied UPI ID</span>
                               </>
                             ) : (
                               <>
                                 <Copy className="w-3.5 h-3.5" />
-                                <span>Copy</span>
+                                <span>Copy UPI ID</span>
                               </>
                             )}
                           </button>
@@ -1094,7 +1088,7 @@ export function CheckoutModal({
                           </span>
                         </p>
                         <p className="text-[11px] text-[#5C5852] leading-relaxed">
-                          Tap <strong>Pay with UPI App</strong> above or scan / <strong>Save QR</strong> to pay {formatINR(totals.total)}, then enter your 12-digit UTR number below.
+                          Tap <strong>PhonePe, Google Pay, Paytm</strong>, or <strong>Pay with Any UPI App</strong> above, or scan the QR to pay {formatINR(totals.total)}, then submit your 12-digit UTR below.
                         </p>
                       </div>
                     </div>
@@ -1105,14 +1099,14 @@ export function CheckoutModal({
                           htmlFor="chk-upi-utr"
                           className="block text-xs font-medium text-[#3E4756] mb-1"
                         >
-                          UPI Transaction ID / UTR *
+                          12-digit UPI UTR / Reference *
                         </label>
                         <input
                           id="chk-upi-utr"
                           type="text"
                           value={upiTransactionId}
                           onChange={(e) => setUpiTransactionId(e.target.value)}
-                          placeholder="e.g. 432198765012"
+                          placeholder="Enter 12-digit UTR (e.g. 432198765012)"
                           className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-[#DED8C8] bg-white focus:outline-none focus:border-[#0F1D32]"
                         />
                         {errors.upiTransactionId && (
@@ -1229,13 +1223,13 @@ export function CheckoutModal({
             <div className="bg-white rounded-xl overflow-hidden border border-[#223654] p-2">
               <img
                 src={dynamicQrDataUrl || settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
-                alt={`Full screen UPI QR for ${formatINR(totals.total)} to ${settings.upiId}`}
+                alt={`Full screen UPI QR for ${formatINR(totals.total)} to ${effectiveUpiId}`}
                 className="w-full h-auto max-h-[60vh] object-contain mx-auto"
               />
             </div>
             <p className="text-xs text-[#CBD3DF]">
               Amount: <span className="font-mono font-semibold text-[#F7F5EE]">{formatINR(totals.total)}</span> · UPI:{' '}
-              <span className="font-mono font-semibold text-[#C6A45C]">{settings.upiId}</span>
+              <span className="font-mono font-semibold text-[#C6A45C]">{effectiveUpiId}</span>
             </p>
             <p className="text-[11px] text-[#94A3B8]">
               Take a screenshot or tap Save / Share QR to upload in PhonePe, GPay, or Paytm.

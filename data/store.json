@@ -1,8 +1,8 @@
 {
   "settings": {
     "storeName": "Bantuu Store",
-    "upiId": "skiend@axl",
-    "merchantName": "Bantuu Store Retail",
+    "upiId": "Q605265018@ybl",
+    "merchantName": "Banti Mahto",
     "freeShippingThreshold": 0,
     "shippingFee": 0,
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
