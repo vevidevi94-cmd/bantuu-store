@@ -8,6 +8,7 @@ import {
   formatUpiAmountParam,
   isAllowedUpiDeepLink,
   isSafeTransactionId,
+  sanitizeMerchantCode,
   sanitizeUpiText,
   UPI_APP_PACKAGES,
   validateUpiPaymentAmount,
@@ -38,10 +39,11 @@ test('isSafeTransactionId allows clean IDs and blocks path traversal or Firebase
   assert.equal(isSafeTransactionId('short'), false);
 });
 
-test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal @, %20 spaces, and no emojis', () => {
+test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal @, %20 spaces, no emojis, and optional mc', () => {
   const uri = buildDynamicUpiDeepLink({
     merchantUpiId: 'skiend@axl',
     merchantName: 'Bantuu Store',
+    merchantCode: '5411',
     amount: 249.5,
     orderId: 'ORD-TEST-01',
     transactionId: 'TXN-TEST-99',
@@ -51,17 +53,22 @@ test('buildDynamicUpiDeepLink produces NPCI-compliant upi://pay URI with literal
   assert.ok(uri.startsWith('upi://pay?'));
   assert.ok(uri.includes('pa=skiend@axl'), 'pa should keep literal @ for UPI apps');
   assert.ok(uri.includes('pn=Bantuu%20Store'), 'spaces should encode as %20, not +');
+  assert.ok(uri.includes('mc=5411'), '4-digit merchant code should be included');
   assert.equal(uri.includes('+'), false, 'URI should not contain + encoded spaces');
 
   const parsed = new URL(uri);
   assert.equal(parsed.searchParams.get('pa'), 'skiend@axl');
   assert.equal(parsed.searchParams.get('pn'), 'Bantuu Store');
+  assert.equal(parsed.searchParams.get('mc'), '5411');
   assert.equal(parsed.searchParams.get('am'), '249.50');
   assert.equal(parsed.searchParams.get('cu'), 'INR');
   assert.equal(parsed.searchParams.get('tr'), 'TXN-TEST-99');
   assert.equal(parsed.searchParams.get('tn'), 'ORD-TEST-01 - Patanjali Biscuits script');
   assert.equal(formatUpiAmountParam(10), '10.00');
   assert.equal(sanitizeUpiText('  Hello\t<b>World</b>🍪  ', 20), 'Hello b World /b');
+  assert.equal(sanitizeMerchantCode('5411'), '5411');
+  assert.equal(sanitizeMerchantCode('12'), '');
+  assert.equal(sanitizeMerchantCode('abcd'), '');
 });
 
 test('decodePngDataUrl decodes valid base64 PNG data URLs and rejects invalid inputs', () => {

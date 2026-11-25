@@ -21,6 +21,7 @@ export interface UpiPaymentRecord {
 export interface UpiDeepLinkParams {
   merchantUpiId: string;
   merchantName: string;
+  merchantCode?: string;
   amount: number;
   orderId: string;
   transactionId: string;
@@ -102,9 +103,16 @@ function encodeUpiParamValue(value: string, preserveAtSign = false): string {
   return preserveAtSign ? encoded.replace(/%40/gi, '@') : encoded;
 }
 
+export function sanitizeMerchantCode(value: unknown): string {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  const digits = String(value).replace(/\D/g, '');
+  return digits.length === 4 ? digits : '';
+}
+
 export function buildDynamicUpiDeepLink(input: UpiDeepLinkParams): string {
   const pa = sanitizeUpiText(input.merchantUpiId, 80);
   const pn = sanitizeUpiText(input.merchantName, 60) || 'Bantuu Store';
+  const mc = sanitizeMerchantCode(input.merchantCode);
   const tr = sanitizeUpiText(input.transactionId, 40);
   const orderId = sanitizeUpiText(input.orderId, 40);
   const customNote = sanitizeUpiText(input.note, 50);
@@ -113,6 +121,7 @@ export function buildDynamicUpiDeepLink(input: UpiDeepLinkParams): string {
   const queryParts = [
     `pa=${encodeUpiParamValue(pa, true)}`,
     `pn=${encodeUpiParamValue(pn)}`,
+    ...(mc ? [`mc=${mc}`] : []),
     `am=${encodeUpiParamValue(formatUpiAmountParam(input.amount))}`,
     'cu=INR',
     `tr=${encodeUpiParamValue(tr)}`,

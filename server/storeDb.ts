@@ -772,6 +772,10 @@ export async function updateStoreSettingsRecord(
           ? patch.upiDescription.trim() || DEFAULT_PROMISE_COPY.upiDescription
           : db.settings.upiDescription || DEFAULT_PROMISE_COPY.upiDescription,
       upiId: patch.upiId?.trim() || db.settings.upiId,
+      upiMerchantCode:
+        patch.upiMerchantCode !== undefined
+          ? patch.upiMerchantCode.replace(/\D/g, '').slice(0, 4)
+          : db.settings.upiMerchantCode || '',
       upiQrUrl:
         patch.upiQrUrl !== undefined
           ? patch.upiQrUrl.trim() || DEFAULT_UPI_QR_URL

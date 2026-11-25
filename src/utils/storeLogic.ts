@@ -79,6 +79,7 @@ export interface StoreSettings {
   storeName: string;
   storeHours?: string;
   upiId: string;
+  upiMerchantCode?: string;
   upiQrUrl?: string;
   merchantName: string;
   freeShippingThreshold: number;

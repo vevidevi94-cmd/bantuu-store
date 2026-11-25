@@ -798,14 +798,14 @@
                 </div>
               </div>
 
-              <button id="deepLinkUpi" type="button" class="btn btn-navy pay-app-primary">
+              <a id="deepLinkUpi" href="#" class="btn btn-navy pay-app-primary">
                 Pay with UPI App
-              </button>
+              </a>
 
               <div class="app-links-grid">
-                <button id="deepLinkPhonePe" type="button" class="btn btn-outline btn-sm">PhonePe</button>
-                <button id="deepLinkGPay" type="button" class="btn btn-outline btn-sm">Google Pay</button>
-                <button id="deepLinkPaytm" type="button" class="btn btn-outline btn-sm">Paytm</button>
+                <a id="deepLinkPhonePe" href="#" class="btn btn-outline btn-sm">PhonePe</a>
+                <a id="deepLinkGPay" href="#" class="btn btn-outline btn-sm">Google Pay</a>
+                <a id="deepLinkPaytm" href="#" class="btn btn-outline btn-sm">Paytm</a>
               </div>
 
               <div id="launchHint" class="launch-hint" role="status" aria-live="polite"></div>
@@ -1095,12 +1095,15 @@
             upiUriPreview.textContent = p.upiUri;
             utrInput.value = '';
 
+            setSafeHref(deepLinkUpi, data.appLinks.upi, 'upi://pay?');
             deepLinkUpi.textContent = 'Pay with UPI App — ' + formatInr(p.amount);
-            deepLinkUpi.dataset.upiUri = data.appLinks.upi || '';
-            deepLinkPhonePe.dataset.upiUri = data.appLinks.phonepe || '';
-            deepLinkGPay.dataset.upiUri =
-              isIOS && data.appLinks.gpayIos ? data.appLinks.gpayIos : data.appLinks.gpay || '';
-            deepLinkPaytm.dataset.upiUri = data.appLinks.paytm || '';
+            setSafeHref(deepLinkPhonePe, data.appLinks.phonepe, 'phonepe://pay?');
+            setSafeHref(
+              deepLinkGPay,
+              isIOS && data.appLinks.gpayIos ? data.appLinks.gpayIos : data.appLinks.gpay,
+              isIOS && data.appLinks.gpayIos ? 'gpay://upi/pay?' : 'tez://upi/pay?',
+            );
+            setSafeHref(deepLinkPaytm, data.appLinks.paytm, 'paytmmp://pay?');
             launchHint.textContent = '';
             launchHint.classList.remove('visible');
 
@@ -1113,22 +1116,6 @@
           }
         });
 
-        function decodePngDataUrlToFile(dataUrl, fileName) {
-          if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
-            return null;
-          }
-          try {
-            const binary = atob(dataUrl.slice('data:image/png;base64,'.length));
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i += 1) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-            return new File([bytes], fileName, { type: 'image/png' });
-          } catch (_) {
-            return null;
-          }
-        }
-
         const UPI_APP_TARGETS = {
           any: { label: 'UPI App', pkg: '' },
           phonepe: { label: 'PhonePe', pkg: 'com.phonepe.app' },
@@ -1136,85 +1123,73 @@
           paytm: { label: 'Paytm', pkg: 'net.one97.paytm' },
         };
 
-        async function shareQrToUpiApp(appKey) {
-          if (!currentSession) return;
-          const target = UPI_APP_TARGETS[appKey] || UPI_APP_TARGETS.any;
-          const p = currentSession.payment;
-          const safeAmt = Math.max(1, Math.round(Number(p.amount) || 1));
-          const qrFileName = 'bantuu-store-upi-qr-rs' + safeAmt + '.png';
-          const fullDownloadUrl = window.location.origin + '/api/upi-qr/download?amount=' + safeAmt;
-          const shareText = 'Pay ' + formatInr(p.amount) + ' to ' + p.merchantUpiId;
-
-          if (window.Android && typeof window.Android.shareQrToApp === 'function') {
-            window.Android.shareQrToApp(fullDownloadUrl, target.pkg, shareText);
-            launchHint.textContent =
-              'Opening ' + target.label + ' for ' + formatInr(p.amount) + '...';
-            launchHint.classList.add('visible');
-            return;
-          }
-
-          if (window.Android && typeof window.Android.shareFile === 'function') {
-            window.Android.shareFile(fullDownloadUrl, shareText);
-            launchHint.textContent =
-              'Select ' + target.label + ' to pay ' + formatInr(p.amount) + ' cleanly via QR.';
-            launchHint.classList.add('visible');
-            return;
-          }
-
-          if (window.AppInventor && typeof window.AppInventor.setWebViewString === 'function') {
-            window.AppInventor.setWebViewString(
-              JSON.stringify({
-                action: 'share_qr_to_app',
-                app: target.label,
-                package: target.pkg,
-                url: fullDownloadUrl,
-                amount: safeAmt,
-                upiId: p.merchantUpiId,
-                transactionId: p.transactionId,
-                text: shareText,
-              }),
-            );
-          }
-
-          try {
-            const file = decodePngDataUrlToFile(currentSession.qrCodeDataUrl, qrFileName);
-            if (
-              file &&
-              typeof navigator !== 'undefined' &&
-              typeof navigator.share === 'function' &&
-              (!navigator.canShare || navigator.canShare({ files: [file] }))
-            ) {
-              launchHint.textContent =
-                'Tap ' +
-                target.label +
-                ' in the share popup to pay ' +
-                formatInr(p.amount) +
-                ' without UPI link error.';
-              launchHint.classList.add('visible');
-              await navigator.share({
-                title: 'Bantuu Store UPI QR',
-                text: shareText,
-                files: [file],
-              });
+        function attachDirectUpiLaunch(anchor, appKey) {
+          anchor.addEventListener('click', (e) => {
+            if (!currentSession) {
+              e.preventDefault();
               return;
             }
-          } catch (err) {
-            if (err && err.name === 'AbortError') return;
-          }
+            const target = UPI_APP_TARGETS[appKey] || UPI_APP_TARGETS.any;
+            const p = currentSession.payment;
+            const safeAmt = Math.max(1, Math.round(Number(p.amount) || 1));
+            const fullDownloadUrl = window.location.origin + '/api/upi-qr/download?amount=' + safeAmt;
+            const shareText = 'Pay ' + formatInr(p.amount) + ' to ' + p.merchantUpiId;
+            const targetHref = anchor.getAttribute('href') || '';
 
-          launchHint.textContent =
-            'Scan the QR code above directly with ' +
-            target.label +
-            ' to pay ' +
-            formatInr(p.amount) +
-            '.';
-          launchHint.classList.add('visible');
+            // Inside native Android APK: silently open the target UPI app directly with QR image (zero Share popup)
+            if (window.Android && typeof window.Android.shareQrToApp === 'function') {
+              e.preventDefault();
+              window.Android.shareQrToApp(fullDownloadUrl, target.pkg, shareText);
+              launchHint.textContent =
+                'Opening ' + target.label + ' for ' + formatInr(p.amount) + '...';
+              launchHint.classList.add('visible');
+              return;
+            }
+
+            if (!targetHref || targetHref === '#') {
+              e.preventDefault();
+              return;
+            }
+
+            if (window.Android && typeof window.Android.openExternalUrl === 'function') {
+              e.preventDefault();
+              window.Android.openExternalUrl(targetHref);
+              launchHint.textContent =
+                'Opening ' + target.label + ' for ' + formatInr(p.amount) + '...';
+              launchHint.classList.add('visible');
+              return;
+            }
+
+            if (window.AppInventor && typeof window.AppInventor.setWebViewString === 'function') {
+              window.AppInventor.setWebViewString(
+                JSON.stringify({
+                  action: 'upi_direct_pay',
+                  app: target.label,
+                  package: target.pkg,
+                  upiUri: targetHref,
+                  qrUrl: fullDownloadUrl,
+                  amount: safeAmt,
+                  upiId: p.merchantUpiId,
+                  transactionId: p.transactionId,
+                }),
+              );
+            }
+
+            // Mobile browser: let native deep link open PhonePe / GPay / Paytm directly (NO Share sheet popup)
+            launchHint.textContent =
+              'Opening ' +
+              target.label +
+              ' for ' +
+              formatInr(p.amount) +
+              '... After paying, return here (or scan the QR on desktop).';
+            launchHint.classList.add('visible');
+          });
         }
 
-        deepLinkUpi.addEventListener('click', () => shareQrToUpiApp('any'));
-        deepLinkPhonePe.addEventListener('click', () => shareQrToUpiApp('phonepe'));
-        deepLinkGPay.addEventListener('click', () => shareQrToUpiApp('gpay'));
-        deepLinkPaytm.addEventListener('click', () => shareQrToUpiApp('paytm'));
+        attachDirectUpiLaunch(deepLinkUpi, 'any');
+        attachDirectUpiLaunch(deepLinkPhonePe, 'phonepe');
+        attachDirectUpiLaunch(deepLinkGPay, 'gpay');
+        attachDirectUpiLaunch(deepLinkPaytm, 'paytm');
 
         copyUpiBtn.addEventListener('click', async () => {
           if (!currentSession) return;

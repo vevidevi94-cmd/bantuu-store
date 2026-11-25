@@ -168,6 +168,7 @@ export async function createDynamicUpiPayment(input: {
   const upiUri = buildDynamicUpiDeepLink({
     merchantUpiId,
     merchantName,
+    merchantCode: snapshot.settings.upiMerchantCode,
     amount: amountCheck.amount,
     orderId,
     transactionId,

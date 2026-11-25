@@ -263,6 +263,7 @@ export function AdminPanel({
   const [setStoreName, setSetStoreName] = useState(settings.storeName);
   const [setStoreHours, setSetStoreHours] = useState(settings.storeHours || DEFAULT_STORE_HOURS);
   const [setUpiId, setSetUpiId] = useState(settings.upiId);
+  const [setUpiMerchantCode, setSetUpiMerchantCode] = useState(settings.upiMerchantCode || '');
   const [setUpiQrUrl, setSetUpiQrUrl] = useState(
     settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg',
   );
@@ -455,6 +456,7 @@ export function AdminPanel({
     setSetStoreName(settings.storeName);
     setSetStoreHours(settings.storeHours || DEFAULT_STORE_HOURS);
     setSetUpiId(settings.upiId);
+    setSetUpiMerchantCode(settings.upiMerchantCode || '');
     setSetUpiQrUrl(settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg');
     setSetMerchantName(settings.merchantName);
     setSetFreeThreshold(String(settings.freeShippingThreshold));
@@ -1032,6 +1034,7 @@ export function AdminPanel({
           storeName: setStoreName,
           storeHours: setStoreHours,
           upiId: setUpiId,
+          upiMerchantCode: setUpiMerchantCode,
           upiQrUrl: setUpiQrUrl,
           merchantName: setMerchantName,
           freeShippingThreshold: Number(setFreeThreshold) || 0,
@@ -2507,7 +2510,7 @@ export function AdminPanel({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="set-upi-id" className="block text-xs font-medium text-[#3E4756] mb-1.5">
                     Merchant UPI ID (shown at checkout)
@@ -2517,7 +2520,7 @@ export function AdminPanel({
                     type="text"
                     value={setUpiId}
                     onChange={(e) => setSetUpiId(e.target.value)}
-                    placeholder="skiend@axl"
+                    placeholder="skiend@axl or Q...@ybl"
                     className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>
@@ -2533,7 +2536,25 @@ export function AdminPanel({
                     className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>
+                <div>
+                  <label htmlFor="set-upi-mcc" className="block text-xs font-medium text-[#3E4756] mb-1.5">
+                    Merchant Code / MCC (Optional)
+                  </label>
+                  <input
+                    id="set-upi-mcc"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={setUpiMerchantCode}
+                    onChange={(e) => setSetUpiMerchantCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="e.g. 5411"
+                    className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
+                  />
+                </div>
               </div>
+              <p className="text-[11px] text-[#5C5852] -mt-2">
+                Tip: For direct one-tap PhonePe/GPay/Paytm payments without UPI Risk Policy errors, use a free Business Merchant UPI ID (PhonePe Business / Paytm for Business) and 4-digit MCC (e.g. <span className="font-mono">5411</span> for Grocery or <span className="font-mono">5999</span> for Retail).
+              </p>
 
               <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <div

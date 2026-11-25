@@ -27,6 +27,7 @@ import {
   buildAppSpecificUpiLinks,
   buildDynamicUpiDeepLink,
   decodePngDataUrl,
+  isAllowedUpiDeepLink,
   UPI_APP_PACKAGES,
   type UpiAppKey,
   type UpiPaymentRecord,
@@ -157,6 +158,9 @@ export function CheckoutModal({
   const isAndroidWebView =
     typeof navigator !== 'undefined' &&
     /\bwv\b|Android.*Version\/[\d.]+/i.test(navigator.userAgent);
+  const isIOSDevice =
+    typeof navigator !== 'undefined' &&
+    /iPad|iPhone|iPod/i.test(navigator.userAgent);
   const canUseWebShareApi =
     hasAndroidShareBridge ||
     (typeof navigator !== 'undefined' &&
@@ -172,14 +176,26 @@ export function CheckoutModal({
       buildDynamicUpiDeepLink({
         merchantUpiId: settings.upiId,
         merchantName: settings.merchantName || settings.storeName,
+        merchantCode: settings.upiMerchantCode,
         amount: safePayableAmount,
         orderId: fallbackTxnRef,
         transactionId: `TXN-${fallbackTxnRef}`,
         note: `${settings.storeName} Order`,
       }),
-    [settings.upiId, settings.merchantName, settings.storeName, safePayableAmount, fallbackTxnRef],
+    [
+      settings.upiId,
+      settings.merchantName,
+      settings.storeName,
+      settings.upiMerchantCode,
+      safePayableAmount,
+      fallbackTxnRef,
+    ],
   );
   const activeUpiUri = upiSession?.payment.upiUri || fallbackUpiUri;
+  const activeAppLinks = useMemo(
+    () => upiSession?.appLinks || buildAppSpecificUpiLinks(activeUpiUri),
+    [upiSession, activeUpiUri],
+  );
   const upiUri = activeUpiUri;
 
   useEffect(() => {
@@ -354,36 +370,45 @@ export function CheckoutModal({
     }
   };
 
-  const handlePayViaQrShare = async (appKey: UpiAppKey) => {
+  const handleDirectUpiApp = (
+    e: { preventDefault: () => void },
+    appKey: UpiAppKey,
+    directUri: string,
+  ) => {
     const target = UPI_APP_PACKAGES[appKey];
-    const qrFileName = `bantuu-store-upi-qr-rs${safePayableAmount}.png`;
     const fullDownloadUrl = `${window.location.origin}${qrDownloadEndpoint}`;
-    const fullShareUrl = `${window.location.origin}${qrShareEndpoint}`;
     const shareText = `Pay ${formatINR(totals.total)} to ${settings.upiId}`;
 
     const win = window as unknown as {
       Android?: {
         shareQrToApp?: (url: string, packageName: string, text: string) => void;
-        shareFile?: (url: string, text: string) => void;
+        openExternalUrl?: (url: string) => void;
       };
       AppInventor?: {
         setWebViewString?: (value: string) => void;
       };
     };
 
-    // 1. Direct native Android APK bridge (opens PhonePe/GPay/Paytm directly with QR image, zero chooser)
+    // 1. Inside native Android APK: silently open the target UPI app directly with the QR image (auto-scan, zero Share popup)
     if (typeof win.Android?.shareQrToApp === 'function') {
+      e.preventDefault();
       win.Android.shareQrToApp(fullDownloadUrl, target.androidPackage, shareText);
       setUpiAppLaunchMsg(
-        `Opening ${target.label} for ${formatINR(totals.total)}... After paying, paste your 12-digit UTR below.`,
+        `Opening ${target.label} for ${formatINR(totals.total)}... After paying, enter your 12-digit UTR below.`,
       );
       return;
     }
 
-    if (typeof win.Android?.shareFile === 'function') {
-      win.Android.shareFile(fullDownloadUrl, shareText);
+    if (!isAllowedUpiDeepLink(directUri)) {
+      e.preventDefault();
+      return;
+    }
+
+    if (typeof win.Android?.openExternalUrl === 'function') {
+      e.preventDefault();
+      win.Android.openExternalUrl(directUri);
       setUpiAppLaunchMsg(
-        `Choose ${target.label} to pay ${formatINR(totals.total)} via QR (no UPI link block).`,
+        `Opening ${target.label} for ${formatINR(totals.total)}... After paying, enter your 12-digit UTR below.`,
       );
       return;
     }
@@ -391,47 +416,21 @@ export function CheckoutModal({
     if (typeof win.AppInventor?.setWebViewString === 'function') {
       win.AppInventor.setWebViewString(
         JSON.stringify({
-          action: 'share_qr_to_app',
+          action: 'upi_direct_pay',
           app: target.label,
           package: target.androidPackage,
-          url: fullDownloadUrl,
-          shareUrl: fullShareUrl,
+          upiUri: directUri,
+          qrUrl: fullDownloadUrl,
           amount: safePayableAmount,
           upiId: settings.upiId,
           transactionId: upiSession?.payment.transactionId || '',
-          text: shareText,
         }),
       );
     }
 
-    // 2. Instant in-memory QR PNG Web Share (opens PhonePe / GPay / Paytm cleanly with zero UPI Risk Policy error)
-    try {
-      if (canUseWebShareApi && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        const file = await getQrShareFile(qrFileName);
-        if (file && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-          setUpiAppLaunchMsg(
-            `Tap ${target.label} in the popup to pay ${formatINR(totals.total)} cleanly. Then paste your 12-digit UTR below.`,
-          );
-          await navigator.share({
-            title: `${settings.storeName} UPI QR`,
-            text: shareText,
-            files: [file],
-          });
-          return;
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
-    }
-
-    // 3. Fallback for desktop browsers / WebViews without native share
-    setIsQrZoomOpen(true);
+    // 2. Mobile Chrome / Safari: allow native <a> href to open PhonePe / GPay / Paytm directly (NO Share sheet popup)
     setUpiAppLaunchMsg(
-      isAndroidWebView
-        ? `Tap Save QR or screenshot the QR below and open it in ${target.label} to pay ${formatINR(totals.total)}.`
-        : `Scan this QR directly in ${target.label} (or tap Save QR) to pay ${formatINR(totals.total)}.`,
+      `Opening ${target.label} for ${formatINR(totals.total)}... After paying, enter your 12-digit UTR below.`,
     );
   };
 
@@ -941,38 +940,44 @@ export function CheckoutModal({
                         ) : null}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handlePayViaQrShare('any')}
+                      <a
+                        href={activeAppLinks.upi}
+                        onClick={(e) => handleDirectUpiApp(e, 'any', activeAppLinks.upi)}
                         className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#0F1D32] text-[#F7F5EE] text-sm font-semibold hover:bg-[#172A46] transition-colors cursor-pointer"
                       >
                         <Smartphone className="w-4 h-4 text-[#C6A45C]" />
                         <span>Pay with UPI App — {formatINR(totals.total)}</span>
                         <ExternalLink className="w-3.5 h-3.5 text-[#C6A45C]" />
-                      </button>
+                      </a>
 
                       <div className="grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handlePayViaQrShare('phonepe')}
+                        <a
+                          href={activeAppLinks.phonepe}
+                          onClick={(e) => handleDirectUpiApp(e, 'phonepe', activeAppLinks.phonepe)}
                           className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
                         >
                           <span>PhonePe</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePayViaQrShare('gpay')}
+                        </a>
+                        <a
+                          href={isIOSDevice ? activeAppLinks.gpayIos : activeAppLinks.gpay}
+                          onClick={(e) =>
+                            handleDirectUpiApp(
+                              e,
+                              'gpay',
+                              isIOSDevice ? activeAppLinks.gpayIos : activeAppLinks.gpay,
+                            )
+                          }
                           className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
                         >
                           <span>Google Pay</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePayViaQrShare('paytm')}
+                        </a>
+                        <a
+                          href={activeAppLinks.paytm}
+                          onClick={(e) => handleDirectUpiApp(e, 'paytm', activeAppLinks.paytm)}
                           className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-[#DED8C8] bg-[#F7F5EE] text-xs font-semibold text-[#0F1D32] hover:border-[#0F1D32] hover:bg-[#ECE7DA] transition-colors cursor-pointer"
                         >
                           <span>Paytm</span>
-                        </button>
+                        </a>
                       </div>
 
                       {upiAppLaunchMsg && (
