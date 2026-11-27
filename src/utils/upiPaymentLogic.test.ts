@@ -41,8 +41,8 @@ test('isSafeTransactionId allows clean IDs and blocks path traversal or Firebase
 
 test('buildDynamicUpiDeepLink produces safe 5-parameter upi://pay URI with literal @, %20 spaces, and NO tr/url/sign', () => {
   const uri = buildDynamicUpiDeepLink({
-    merchantUpiId: 'Q605265018@ybl',
-    merchantName: 'Banti Mahto',
+    merchantUpiId: 'paytm.s1ygjj7@pty',
+    merchantName: 'PREM LAL CHOUDHRI',
     merchantCode: '5411',
     amount: 249.5,
     orderId: 'ORD-TEST-01',
@@ -52,7 +52,7 @@ test('buildDynamicUpiDeepLink produces safe 5-parameter upi://pay URI with liter
 
   assert.equal(
     uri,
-    'upi://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=249.50&cu=INR&tn=ORD-TEST-01',
+    'upi://pay?pa=paytm.s1ygjj7@pty&pn=PREM%20LAL%20CHOUDHRI&am=249.50&cu=INR&tn=ORD-TEST-01',
   );
   assert.equal(uri.includes('+'), false, 'URI should not contain + encoded spaces');
   assert.equal(uri.includes('tr='), false, 'URI must NOT include tr parameter');
@@ -61,8 +61,8 @@ test('buildDynamicUpiDeepLink produces safe 5-parameter upi://pay URI with liter
   assert.equal(uri.includes('mc='), false, 'URI must keep only safe standard 5 parameters');
 
   const parsed = new URL(uri);
-  assert.equal(parsed.searchParams.get('pa'), 'Q605265018@ybl');
-  assert.equal(parsed.searchParams.get('pn'), 'Banti Mahto');
+  assert.equal(parsed.searchParams.get('pa'), 'paytm.s1ygjj7@pty');
+  assert.equal(parsed.searchParams.get('pn'), 'PREM LAL CHOUDHRI');
   assert.equal(parsed.searchParams.get('am'), '249.50');
   assert.equal(parsed.searchParams.get('cu'), 'INR');
   assert.equal(parsed.searchParams.get('tn'), 'ORD-TEST-01');
@@ -89,13 +89,13 @@ test('decodePngDataUrl decodes valid base64 PNG data URLs and rejects invalid in
 
 test('buildAppSpecificUpiLinks maps safe standard UPI query to PhonePe, Google Pay, Paytm, and Any UPI App', () => {
   const base = buildDynamicUpiDeepLink({
-    merchantUpiId: 'Q605265018@ybl',
-    merchantName: 'Banti Mahto',
+    merchantUpiId: 'paytm.s1ygjj7@pty',
+    merchantName: 'PREM LAL CHOUDHRI',
     amount: 149,
     orderId: 'ORD-1001',
   });
   const links = buildAppSpecificUpiLinks(base);
-  const expectedQuery = 'pa=Q605265018@ybl&pn=Banti%20Mahto&am=149.00&cu=INR&tn=ORD-1001';
+  const expectedQuery = 'pa=paytm.s1ygjj7@pty&pn=PREM%20LAL%20CHOUDHRI&am=149.00&cu=INR&tn=ORD-1001';
 
   assert.equal(links.upi, `upi://pay?${expectedQuery}`);
   assert.equal(links.phonepe, `phonepe://pay?${expectedQuery}`);
@@ -144,10 +144,11 @@ test('verifyTransactionStatusToken validates derived HMAC token even after serve
     orderId: 'ORD-COLDSTART-99',
     amount: 99,
     currency: 'INR' as const,
-    merchantUpiId: 'Q605265018@ybl',
-    merchantName: 'Banti Mahto',
+    merchantUpiId: 'paytm.s1ygjj7@pty',
+    merchantName: 'PREM LAL CHOUDHRI',
     note: 'ORD-COLDSTART-99',
-    upiUri: 'upi://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=99.00&cu=INR&tn=ORD-COLDSTART-99',
+    upiUri:
+      'upi://pay?pa=paytm.s1ygjj7@pty&pn=PREM%20LAL%20CHOUDHRI&am=99.00&cu=INR&tn=ORD-COLDSTART-99',
     status: 'Pending Verification' as const,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

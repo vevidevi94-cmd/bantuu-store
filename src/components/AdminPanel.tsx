@@ -267,7 +267,7 @@ export function AdminPanel({
   const [setUpiId, setSetUpiId] = useState(settings.upiId);
   const [setUpiMerchantCode, setSetUpiMerchantCode] = useState(settings.upiMerchantCode || '');
   const [setUpiQrUrl, setSetUpiQrUrl] = useState(
-    settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg',
+    settings.upiQrUrl || '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg',
   );
   const [setMerchantName, setSetMerchantName] = useState(settings.merchantName);
   const [setFreeThreshold, setSetFreeThreshold] = useState(String(settings.freeShippingThreshold));
@@ -459,7 +459,7 @@ export function AdminPanel({
     setSetStoreHours(settings.storeHours || DEFAULT_STORE_HOURS);
     setSetUpiId(settings.upiId);
     setSetUpiMerchantCode(settings.upiMerchantCode || '');
-    setSetUpiQrUrl(settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg');
+    setSetUpiQrUrl(settings.upiQrUrl || '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg');
     setSetMerchantName(settings.merchantName);
     setSetFreeThreshold(String(settings.freeShippingThreshold));
     setSetShippingFee(String(settings.shippingFee));
@@ -2524,7 +2524,7 @@ export function AdminPanel({
                     type="text"
                     value={setUpiId}
                     onChange={(e) => setSetUpiId(e.target.value)}
-                    placeholder="Q605265018@ybl"
+                    placeholder="paytm.s1ygjj7@pty"
                     className="w-full px-3.5 py-2.5 text-sm font-mono rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>
@@ -2537,29 +2537,21 @@ export function AdminPanel({
                     type="text"
                     value={setMerchantName}
                     onChange={(e) => setSetMerchantName(e.target.value)}
-                    placeholder="Banti Mahto"
+                    placeholder="PREM LAL CHOUDHRI"
                     className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[#DED8C8] focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>
               </div>
               <p className="text-[11px] text-[#5C5852] -mt-2">
-                Default verified payee: <span className="font-mono font-semibold text-[#0F1D32]">Q605265018@ybl</span> (<span className="font-medium text-[#0F1D32]">Banti Mahto</span>). Checkout UPI links use only safe standard parameters (<span className="font-mono">pa, pn, am, cu, tn</span>) so PhonePe, Google Pay, and Paytm open without risk policy blocks.
+                Default verified payee: <span className="font-mono font-semibold text-[#0F1D32]">paytm.s1ygjj7@pty</span> (<span className="font-medium text-[#0F1D32]">PREM LAL CHOUDHRI</span>). Checkout UPI links use only safe standard parameters (<span className="font-mono">pa, pn, am, cu, tn</span>) so PhonePe, Google Pay, and Paytm open without risk policy blocks.
               </p>
 
               <div className="p-4 rounded-lg bg-[#F7F5EE] border border-[#DED8C8] flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <div
-                  className={`w-20 h-20 rounded-lg overflow-hidden border border-[#DED8C8] shrink-0 ${
-                    (setUpiQrUrl || '').includes('47084_35196505') ? 'bg-white' : 'bg-black'
-                  }`}
-                >
+                <div className="w-20 h-20 rounded-lg overflow-hidden border border-[#DED8C8] shrink-0 bg-white">
                   <img
-                    src={setUpiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
+                    src={setUpiQrUrl || '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg'}
                     alt="Merchant UPI QR Barcode"
-                    className={
-                      (setUpiQrUrl || '').includes('47084_35196505')
-                        ? 'w-full h-full object-cover object-[50%_52%] scale-[1.28]'
-                        : 'w-full h-full object-contain p-1'
-                    }
+                    className="w-full h-full object-contain p-1"
                   />
                 </div>
                 <div className="flex-1 w-full space-y-1.5">
@@ -2571,7 +2563,7 @@ export function AdminPanel({
                     type="text"
                     value={setUpiQrUrl}
                     onChange={(e) => setSetUpiQrUrl(e.target.value)}
-                    placeholder="/assets/aistudio/47084_f56d5f0a.jpg"
+                    placeholder="/assets/aistudio/IMG_20261126_202001_a95c9992.jpg"
                     className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-[#DED8C8] bg-white focus:outline-none focus:border-[#0F1D32]"
                   />
                 </div>

@@ -134,13 +134,21 @@ test('validateProductForm requires name, price, stock, description, and media', 
 });
 
 test('buildUpiPaymentUri builds safe 5-parameter standard UPI and PhonePe deeplinks', () => {
-  const uri = buildUpiPaymentUri('Q605265018@ybl', 'Banti Mahto', 1899, 'ORD-1005');
-  assert.equal(uri, 'upi://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=1899.00&cu=INR&tn=ORD-1005');
+  const uri = buildUpiPaymentUri('paytm.s1ygjj7@pty', 'PREM LAL CHOUDHRI', 1899, 'ORD-1005');
+  assert.equal(
+    uri,
+    'upi://pay?pa=paytm.s1ygjj7@pty&pn=PREM%20LAL%20CHOUDHRI&am=1899.00&cu=INR&tn=ORD-1005',
+  );
 
-  const phonePeUri = buildPhonePePaymentUri('Q605265018@ybl', 'Banti Mahto', 2499, 'ORD-1006');
+  const phonePeUri = buildPhonePePaymentUri(
+    'paytm.s1ygjj7@pty',
+    'PREM LAL CHOUDHRI',
+    2499,
+    'ORD-1006',
+  );
   assert.equal(
     phonePeUri,
-    'phonepe://pay?pa=Q605265018@ybl&pn=Banti%20Mahto&am=2499.00&cu=INR&tn=ORD-1006',
+    'phonepe://pay?pa=paytm.s1ygjj7@pty&pn=PREM%20LAL%20CHOUDHRI&am=2499.00&cu=INR&tn=ORD-1006',
   );
 });
 

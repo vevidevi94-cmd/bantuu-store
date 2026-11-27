@@ -231,8 +231,8 @@ export function createApiApp(): Express {
             ? req.query.orderId.trim()
             : `ORD-${Date.now().toString(36).toUpperCase()}`;
         const upiUri = buildUpiPaymentUri(
-          db.settings.upiId || 'Q605265018@ybl',
-          db.settings.merchantName || 'Banti Mahto',
+          db.settings.upiId || 'paytm.s1ygjj7@pty',
+          db.settings.merchantName || 'PREM LAL CHOUDHRI',
           amount,
           orderNote,
         );
@@ -253,7 +253,9 @@ export function createApiApp(): Express {
         return;
       }
 
-      const qrUrl = (db.settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg').trim();
+      const qrUrl = (
+        db.settings.upiQrUrl || '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg'
+      ).trim();
 
       if (qrUrl.startsWith('data:image/')) {
         const match = qrUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
@@ -361,7 +363,7 @@ export function createApiApp(): Express {
           .replace(/'/g, '&#39;');
 
       const safeStore = esc(db.settings.storeName || 'Bantuu Store');
-      const safeUpiId = esc(db.settings.upiId || 'Q605265018@ybl');
+      const safeUpiId = esc(db.settings.upiId || 'paytm.s1ygjj7@pty');
       const amountQuery = amount > 0 ? `amount=${amount}` : '';
       const imgSrc = `/api/upi-qr/download?${amountQuery ? `${amountQuery}&` : ''}inline=1`;
       const dlSrc = `/api/upi-qr/download${amountQuery ? `?${amountQuery}` : ''}`;
@@ -412,9 +414,9 @@ export function createApiApp(): Express {
   <script>
     const imgUrl = ${JSON.stringify(imgSrc)};
     const dlFileName = ${JSON.stringify(fileName)};
-    const upiId = ${JSON.stringify(db.settings.upiId || 'Q605265018@ybl')};
+    const upiId = ${JSON.stringify(db.settings.upiId || 'paytm.s1ygjj7@pty')};
     const storeName = ${JSON.stringify(db.settings.storeName || 'Bantuu Store')};
-    const amountText = ${JSON.stringify(amount > 0 ? `Pay ₹${amount} to ${db.settings.upiId || 'Q605265018@ybl'}` : `Pay via UPI to ${db.settings.upiId || 'Q605265018@ybl'}`)};
+    const amountText = ${JSON.stringify(amount > 0 ? `Pay ₹${amount} to ${db.settings.upiId || 'paytm.s1ygjj7@pty'}` : `Pay via UPI to ${db.settings.upiId || 'paytm.s1ygjj7@pty'}`)};
     const statusEl = document.getElementById('statusMsg');
 
     async function shareQrNow() {

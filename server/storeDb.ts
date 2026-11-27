@@ -36,11 +36,11 @@ const DATA_DIR = process.env.VERCEL
   : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 const DEFAULT_RTDB_URL = 'https://bantuu-store-default-rtdb.firebaseio.com';
-const DEFAULT_UPI_ID = 'Q605265018@ybl';
-const DEFAULT_MERCHANT_NAME = 'Banti Mahto';
-const LEGACY_UPI_IDS = new Set(['bantustore@upi', 'skiend@axl']);
-const LEGACY_MERCHANT_NAMES = new Set(['Bantuu Store Retail', 'Bantu Store Retail']);
-const DEFAULT_UPI_QR_URL = '/assets/aistudio/47084_f56d5f0a.jpg';
+const DEFAULT_UPI_ID = 'paytm.s1ygjj7@pty';
+const DEFAULT_MERCHANT_NAME = 'PREM LAL CHOUDHRI';
+const LEGACY_UPI_IDS = new Set(['bantustore@upi', 'skiend@axl', 'Q605265018@ybl']);
+const LEGACY_MERCHANT_NAMES = new Set(['Bantuu Store Retail', 'Bantu Store Retail', 'Banti Mahto']);
+const DEFAULT_UPI_QR_URL = '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg';
 const DEFAULT_CATEGORIES = [
   'Home & Living',
   'Carry & Leather',
@@ -253,7 +253,11 @@ function ensureDbInitialized(): StoreDatabase {
   if (!parsed.settings.merchantName || LEGACY_MERCHANT_NAMES.has(parsed.settings.merchantName.trim())) {
     parsed.settings.merchantName = DEFAULT_MERCHANT_NAME;
   }
-  if (!parsed.settings.upiQrUrl || parsed.settings.upiQrUrl.includes('47084_35196505')) {
+  if (
+    !parsed.settings.upiQrUrl ||
+    parsed.settings.upiQrUrl.includes('47084_35196505') ||
+    parsed.settings.upiQrUrl.includes('47084_f56d5f0a')
+  ) {
     parsed.settings.upiQrUrl = DEFAULT_UPI_QR_URL;
   }
   if (!Array.isArray(parsed.categories) || parsed.categories.length === 0) {
@@ -409,7 +413,9 @@ export async function syncWithRtdbOnBootOrRefresh(): Promise<StoreDatabase> {
 
   if (remote.settings) {
     const needsQrMigration =
-      !remote.settings.upiQrUrl || remote.settings.upiQrUrl.includes('47084_35196505');
+      !remote.settings.upiQrUrl ||
+      remote.settings.upiQrUrl.includes('47084_35196505') ||
+      remote.settings.upiQrUrl.includes('47084_f56d5f0a');
     const needsHoursMigration = !remote.settings.storeHours || !remote.settings.storeHours.trim();
     const needsPayeeIdMigration =
       !remote.settings.upiId || LEGACY_UPI_IDS.has(remote.settings.upiId.trim());

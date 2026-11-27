@@ -171,8 +171,8 @@ export function CheckoutModal({
     () => `ORD-${safePayableAmount}-${Date.now().toString(36).toUpperCase().slice(-5)}`,
     [safePayableAmount],
   );
-  const effectiveUpiId = settings.upiId || 'Q605265018@ybl';
-  const effectiveMerchantName = settings.merchantName || 'Banti Mahto';
+  const effectiveUpiId = settings.upiId || 'paytm.s1ygjj7@pty';
+  const effectiveMerchantName = settings.merchantName || 'PREM LAL CHOUDHRI';
   const fallbackUpiUri = useMemo(
     () =>
       buildDynamicUpiDeepLink({
@@ -983,7 +983,8 @@ export function CheckoutModal({
 
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                       {(() => {
-                        const fallbackQrUrl = settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg';
+                        const fallbackQrUrl =
+                          settings.upiQrUrl || '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg';
                         const activeQrSrc = dynamicQrDataUrl || fallbackQrUrl;
                         const isDynamicQr = Boolean(dynamicQrDataUrl);
                         if (!activeQrSrc || qrLoadError) {
@@ -995,7 +996,7 @@ export function CheckoutModal({
                             onClick={() => setIsQrZoomOpen(true)}
                             aria-label="Enlarge UPI QR code"
                             className={`group w-44 sm:w-48 rounded-xl overflow-hidden border border-[#DED8C8] p-2 flex flex-col items-center shrink-0 cursor-pointer ${
-                              isDynamicQr ? 'bg-white' : 'bg-black'
+                              isDynamicQr ? 'bg-white' : 'bg-white'
                             }`}
                           >
                             <span className="w-full flex items-center justify-between gap-2 pb-1.5">
@@ -1022,7 +1023,7 @@ export function CheckoutModal({
                           <span>Scan QR with PhonePe, GPay, Paytm or BHIM</span>
                         </div>
                         <p className="text-[11px] text-[#5C5852]">
-                          {effectiveMerchantName} · Verified PhonePe Business Merchant
+                          {effectiveMerchantName} · Verified Merchant UPI
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
                           <code className="px-2.5 py-1.5 rounded bg-white border border-[#DED8C8] text-xs font-mono font-semibold text-[#0F1D32]">
@@ -1222,7 +1223,11 @@ export function CheckoutModal({
             </div>
             <div className="bg-white rounded-xl overflow-hidden border border-[#223654] p-2">
               <img
-                src={dynamicQrDataUrl || settings.upiQrUrl || '/assets/aistudio/47084_f56d5f0a.jpg'}
+                src={
+                  dynamicQrDataUrl ||
+                  settings.upiQrUrl ||
+                  '/assets/aistudio/IMG_20261126_202001_a95c9992.jpg'
+                }
                 alt={`Full screen UPI QR for ${formatINR(totals.total)} to ${effectiveUpiId}`}
                 className="w-full h-auto max-h-[60vh] object-contain mx-auto"
               />

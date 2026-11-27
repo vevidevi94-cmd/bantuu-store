@@ -1,7 +1,7 @@
 export type UpiPaymentStatus = 'Pending' | 'Pending Verification' | 'Paid' | 'Failed' | 'Expired';
 
-export const DEFAULT_MERCHANT_UPI_ID = 'Q605265018@ybl';
-export const DEFAULT_MERCHANT_NAME = 'Banti Mahto';
+export const DEFAULT_MERCHANT_UPI_ID = 'paytm.s1ygjj7@pty';
+export const DEFAULT_MERCHANT_NAME = 'PREM LAL CHOUDHRI';
 
 export interface UpiPaymentRecord {
   transactionId: string;

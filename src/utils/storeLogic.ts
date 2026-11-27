@@ -70,8 +70,8 @@ export interface Order {
 }
 
 export const DEFAULT_STORE_HOURS = 'Store open at 6:00 am close at 8:30 pm';
-export const DEFAULT_UPI_ID = 'Q605265018@ybl';
-export const DEFAULT_MERCHANT_NAME = 'Banti Mahto';
+export const DEFAULT_UPI_ID = 'paytm.s1ygjj7@pty';
+export const DEFAULT_MERCHANT_NAME = 'PREM LAL CHOUDHRI';
 
 export const DEFAULT_PROMISE_COPY = {
   codEyebrow: '01. Cash on Delivery',

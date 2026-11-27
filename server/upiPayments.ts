@@ -158,8 +158,8 @@ export async function createDynamicUpiPayment(input: {
   }
 
   const snapshot = getStoreSnapshot();
-  const merchantUpiId = snapshot.settings.upiId || 'Q605265018@ybl';
-  const merchantName = snapshot.settings.merchantName || 'Banti Mahto';
+  const merchantUpiId = snapshot.settings.upiId || 'paytm.s1ygjj7@pty';
+  const merchantName = snapshot.settings.merchantName || 'PREM LAL CHOUDHRI';
   const { orderId, transactionId } = generateUniqueUpiIds();
   const cleanNote = sanitizeUpiText(input.note, 50);
   const cleanCustomer = sanitizeUpiText(input.customerName, 60);

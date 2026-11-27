@@ -1,12 +1,12 @@
 {
   "settings": {
     "storeName": "Bantuu Store",
-    "upiId": "Q605265018@ybl",
-    "merchantName": "Banti Mahto",
+    "upiId": "paytm.s1ygjj7@pty",
+    "merchantName": "PREM LAL CHOUDHRI",
     "freeShippingThreshold": 0,
     "shippingFee": 0,
     "firebaseRtdbUrl": "https://bantuu-store-default-rtdb.firebaseio.com",
-    "upiQrUrl": "/assets/aistudio/47084_f56d5f0a.jpg",
+    "upiQrUrl": "/assets/aistudio/IMG_20261126_202001_a95c9992.jpg",
     "storeHours": "Store open at 6:00 am close at 8:30 pm",
     "codEyebrow": "01. Cash on Delivery",
     "codTitle": "Pay when your parcel arrives",

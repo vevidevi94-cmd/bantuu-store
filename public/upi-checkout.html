@@ -1022,14 +1022,14 @@
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (data && data.settings && data.settings.upiId) {
-              const name = data.settings.merchantName || 'Banti Mahto';
+              const name = data.settings.merchantName || 'PREM LAL CHOUDHRI';
               merchantMeta.textContent = 'Merchant UPI: ' + data.settings.upiId + ' · ' + name;
             } else {
-              merchantMeta.textContent = 'Merchant UPI: Q605265018@ybl · Banti Mahto';
+              merchantMeta.textContent = 'Merchant UPI: paytm.s1ygjj7@pty · PREM LAL CHOUDHRI';
             }
           })
           .catch(() => {
-            merchantMeta.textContent = 'Merchant UPI: Q605265018@ybl · Banti Mahto';
+            merchantMeta.textContent = 'Merchant UPI: paytm.s1ygjj7@pty · PREM LAL CHOUDHRI';
           });
 
         // Quick amount presets
